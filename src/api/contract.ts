@@ -16,17 +16,28 @@ export interface RepoRef {
 export type ErrorCode =
   | 'INVALID_REPO_URL'
   | 'REPO_NOT_ACCESSIBLE'
+  | 'REPO_TOO_LARGE'
   | 'GITHUB_RATE_LIMITED'
   | 'GITHUB_UNAVAILABLE'
+  | 'RATE_LIMITED'
   | 'ANALYSIS_NOT_FOUND'
+  | 'ANALYSIS_NOT_READY'
+  | 'PROVIDER_NOT_FOUND'
+  | 'STATUS_NOT_SUPPORTED'
   | 'STATUS_UNAVAILABLE'
-  | 'DEMO_EVENT_INVALID';
+  | 'DEMO_EVENT_INVALID'
+  | 'BAD_REQUEST'
+  | 'NOT_FOUND'
+  | 'INTERNAL_ERROR';
 
 export interface ApiError {
   code: ErrorCode;
   message: string;
   retryable: boolean;
+  /** GITHUB_RATE_LIMITED: GitHub 요청 한도가 풀리는 시각 */
   resetAt?: string;
+  /** RATE_LIMITED: 다시 시도할 수 있을 때까지 남은 초 (Retry-After 헤더와 같음) */
+  retryAfter?: number;
 }
 
 export interface ProviderSummary {
