@@ -2,7 +2,8 @@
 
 import { categoryOf, PROVIDER_IDS, PROVIDERS } from '../engine/rules.js';
 import type { EngineResult, Evidence } from '../engine/types.js';
-import type { AnalysisResult, EvidenceItem, FileEntry, ProviderDetail, ProviderId, ProviderSummary } from './contract.js';
+import type { OtherService } from '../engine/learn.js';
+import type { AnalysisResult, EvidenceItem, FileEntry, OtherServiceSummary, ProviderDetail, ProviderId, ProviderSummary } from './contract.js';
 
 const PRIORITY: Record<Evidence['kind'], number> = {
   call: 9,
@@ -40,7 +41,7 @@ function evidenceFor(r: EngineResult, provider: ProviderId) {
   return { used, list: used ? all.filter((e) => !DECLARATIVE.has(e.kind)) : all };
 }
 
-export function toAnalysisResult(r: EngineResult): AnalysisResult {
+export function toAnalysisResult(r: EngineResult, others: OtherService[] = []): AnalysisResult {
   const providers: ProviderSummary[] = [];
   for (const id of PROVIDER_IDS) {
     const { used, list } = evidenceFor(r, id);
@@ -80,7 +81,9 @@ export function toAnalysisResult(r: EngineResult): AnalysisResult {
         : { path: f.path, state: 'other' },
   );
 
-  return { providers, files, summary: { analyzed: r.stats.analyzed, skipped: r.stats.skipped } };
+  const otherServices: OtherServiceSummary[] = others.map((o) => ({ name: o.name, clues: o.clues, fileCount: new Set(o.files.map((f) => f.path)).size, files: o.files }));
+
+  return { providers, otherServices, files, summary: { analyzed: r.stats.analyzed, skipped: r.stats.skipped } };
 }
 
 export function toProviderDetail(r: EngineResult, provider: ProviderId): ProviderDetail {
