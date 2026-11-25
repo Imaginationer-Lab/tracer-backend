@@ -24,6 +24,8 @@ export interface Evidence extends Location {
   role?: string;
   facts?: CodeFacts;
   ruleId?: string;
+  /** host로 판정한 근거면 그 host와 경로 (엔드포인트 저장용). '*'는 동적인 부분 */
+  endpoint?: { host: string; path?: string };
 }
 
 /** 규칙으로 판단하지 못해 LLM에 넘길 후보. occurrences는 서버에만 두고 LLM에는 보내지 않는다. */
