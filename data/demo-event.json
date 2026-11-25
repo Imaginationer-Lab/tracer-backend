@@ -1,0 +1,6 @@
+{
+  "providerId": "stripe",
+  "title": "Stripe 결제 API 응답 실패",
+  "httpStatus": 503,
+  "occurredAt": "2026-11-25T01:00:00.000Z"
+}
