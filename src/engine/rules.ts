@@ -182,8 +182,12 @@ export const BUILTIN_RULES: Rule[] = [
   rule('aws-s3', { type: 'setting', key: ['s3', 's3.*', '*.s3', '*.s3.*'] }),
 ];
 
+/** 엔진 로직(추출·해석)을 바꿔서 같은 규칙으로도 결과가 달라지면 올린다. 분석 캐시 키에 들어간다. */
+export const ENGINE_VERSION = 2;
+
 export function rulesetVersion(rules: Rule[]): string {
-  return createHash('sha1').update(JSON.stringify(rules.map((r) => [r.id, r.provider, r.langs, r.match]))).digest('hex').slice(0, 10);
+  const payload = JSON.stringify([ENGINE_VERSION, rules.map((r) => [r.id, r.provider, r.langs, r.match])]);
+  return createHash('sha1').update(payload).digest('hex').slice(0, 10);
 }
 
 // ─── 공급자가 아닌 의존성 ───────────────────────────────────────────────────
