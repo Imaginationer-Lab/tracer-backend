@@ -1,0 +1,7 @@
+# 루트 node_modules만 뺀다 (test/fixtures/*/node_modules는 테스트에 필요)
+node_modules
+dist
+coverage
+.git
+*.log
+.env
