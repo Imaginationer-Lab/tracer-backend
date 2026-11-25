@@ -17,6 +17,8 @@ export interface AppConfig {
   maxRepoFiles: number;
   /** 브라우저에서 API를 부를 수 있는 출처 (프론트) */
   corsOrigins: string[];
+  /** 규칙으로 못 푼 단서를 Claude로 분류. 키가 없으면 끈다 */
+  llm: { apiKey: string; model: string; timeoutMs: number; maxItems: number } | null;
 }
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:9000', 'http://127.0.0.1:9000'];
@@ -60,5 +62,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxTarballBytes: int(env, 'MAX_TARBALL_MB', 50) * 1024 * 1024,
     maxRepoFiles: int(env, 'MAX_REPO_FILES', 20000),
     corsOrigins: corsOrigins(env.CORS_ORIGINS),
+    llm: env.ANTHROPIC_API_KEY
+      ? {
+          apiKey: env.ANTHROPIC_API_KEY,
+          model: env.CLAUDE_MODEL || 'claude-opus-5-5',
+          timeoutMs: int(env, 'LLM_TIMEOUT_SECONDS', 90) * 1000,
+          maxItems: int(env, 'LLM_MAX_ITEMS', 300),
+        }
+      : null,
   };
 }

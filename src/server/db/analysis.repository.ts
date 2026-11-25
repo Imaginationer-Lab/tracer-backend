@@ -39,6 +39,11 @@ const toRecord = (r: AnalysisRow): AnalysisRecord => ({
   ambiguous: r.ambiguous,
 });
 
+export interface StoredClassification {
+  provider: string;
+  service: string | null;
+}
+
 /**
  * pg는 JS 배열을 Postgres 배열로 바꿔서 보내므로, jsonb에 넣을 값은 직접 JSON 문자열로 만들고 SQL에서 ::jsonb로 받는다.
  */
@@ -126,6 +131,26 @@ export class AnalysisRepository {
       json(error),
     ]);
     return rowCount ?? 0;
+  }
+
+  /** 단서 키로 저장된 LLM 판정. 찾은 단서는 hits를 올린다 */
+  async findClassifications(keys: string[]): Promise<Map<string, StoredClassification>> {
+    if (!keys.length) return new Map();
+    const { rows } = await this.pool.query<{ clue_key: string; provider: string; service: string | null }>(
+      `UPDATE clue_classifications SET hits = hits + 1 WHERE clue_key = ANY($1::text[]) RETURNING clue_key, provider, service`,
+      [keys],
+    );
+    return new Map(rows.map((r) => [r.clue_key, { provider: r.provider, service: r.service }]));
+  }
+
+  async saveClassifications(rows: (StoredClassification & { key: string; kind: AmbiguousItem['kind']; model: string })[]): Promise<void> {
+    if (!rows.length) return;
+    await this.pool.query(
+      `INSERT INTO clue_classifications (clue_key, kind, provider, service, model, hits)
+       SELECT * , 1 FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+       ON CONFLICT (clue_key) DO NOTHING`,
+      [rows.map((r) => r.key), rows.map((r) => r.kind), rows.map((r) => r.provider), rows.map((r) => r.service), rows.map((r) => r.model)],
+    );
   }
 
   async loadLearnedRules(): Promise<Rule[]> {
