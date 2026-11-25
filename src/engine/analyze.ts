@@ -51,6 +51,8 @@ export async function analyze(files: RepoFile[], options: AnalyzeOptions = {}): 
     if (role.kind === 'ignored') continue;
     if (role.kind === 'other') {
       statuses.set(f.path, { path: f.path, state: 'other' });
+    } else if (f.tooLarge) {
+      statuses.set(f.path, { path: f.path, state: 'skipped', reason: 'too-large' });
     } else if (role.kind === 'manifest') {
       deps.push(...parseManifest(role, f.path, f.content));
       statuses.set(f.path, { path: f.path, state: 'analyzed' });
