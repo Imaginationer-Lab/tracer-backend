@@ -3,7 +3,7 @@
 > 이 문서만 보고 프론트(SCR-001 저장소 입력, SCR-002 분석 대시보드)를 구현할 수 있게 쓴 인계 문서다.
 > 기계가 읽는 명세는 [`openapi.yaml`](openapi.yaml), 서버 쪽 상세는 [`api.md`](api.md).
 > 기준: `Imaginationer-Lab/tracer-backend` `main`, 2026-11-25.
-> 프론트가 자기 타입을 따로 쓴다면 9장의 어댑터로 이 API 응답을 변환한다 (백엔드 응답은 정보를 넉넉히 주고, 화면에 맞는 모양은 프론트에서 고른다).
+> 4장의 타입을 그대로 쓰는 걸 권장한다. 프론트가 먼저 만든 타입을 꼭 유지해야 할 때만 9장의 어댑터를 쓴다 (정보를 합치지 않게 값을 넓혀서).
 
 ## 0. 한 줄 요약
 
@@ -393,7 +393,9 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 
 ## 9. 프론트 타입으로 바꾸기 (어댑터)
 
-백엔드는 응답을 넉넉하게 주고, 화면에 맞는 모양은 프론트 어댑터에서 만든다. 아래는 프론트에서 정의한 `AnalysisResult` 계열 타입으로 바꾸는 기준이다.
+**권장: 어댑터 없이 4장의 백엔드 타입을 그대로 쓴다.** 그러면 공급자 상태 다섯 가지(정상·성능 저하·장애·점검 중·알 수 없음)와 파일 단위 코드 사실이 그대로 남는다.
+
+이 장은 프론트가 먼저 만든 `AnalysisResult` 계열 타입을 꼭 유지해야 할 때만 쓴다. 그때도 정보를 합치지 말고 프론트 타입의 값을 넓힌다. 특히 상태를 `degraded` 하나로 합치면 "점검 중"(공급자가 미리 알린 작업, 기다리면 됨)과 "장애"(공급자 쪽 문제부터 확인)를 구분할 수 없어서 대응 가이드가 틀어진다.
 
 ### 대응표
 
@@ -407,7 +409,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | `providers[].files[]` (`path`, `line`, `snippet`) | `GET /analyses/:id/providers/:providerId`의 `evidence[]` (공급자당 1번, 최대 3번) | 순서는 강한 근거 순 (첫 항목이 "여기부터 확인하세요"). 줄 번호를 매기려면 `snippet.startLine`이 필요해서 `snippetStartLine`을 더한다 |
 | `providers[].facts` (공급자 단위) | `evidence[].facts` (근거 단위)를 합침 | 호출부가 여러 개면 **전부 처리할 때만 `true`**. `statusHandling` = `statusCheck`. 대응 가이드의 "○○.ts에 … 없어요"처럼 파일 이름이 필요하면 근거 단위 `facts`를 그대로 쓴다 |
 | `AnalyzeError.kind` | `error.code` | `REPO_NOT_ACCESSIBLE`→`not_found`, `GITHUB_RATE_LIMITED`→`rate_limited`(`resetAt`), 그 밖은 `temporary`. 백엔드에만 있는 것: `INVALID_REPO_URL`→`invalid_url`, `REPO_TOO_LARGE`→`too_large`, 우리 서버 요청 제한 `RATE_LIMITED`→`busy`(`retryAfter`초). 이 세 값을 프론트 타입에 더한다 |
-| `ProviderStatus.state` | `state` | `operational`→`ok`, `degraded`·`outage`·`maintenance`→`degraded`, `unknown`→`unknown`. 조회 실패(`502 STATUS_UNAVAILABLE`)도 `unknown` ("상태 확인 불가") |
+| `ProviderStatus.state` | `state` 그대로 | **합치지 않는다.** 프론트 타입의 `state`를 `operational`·`degraded`·`outage`·`maintenance`·`unknown`으로 넓힌다 (화면: 정상·성능 저하·장애·점검 중·상태 확인 불가). 조회 실패(`502 STATUS_UNAVAILABLE`)는 `unknown` |
 
 어댑터로 바꾸면서 버리는 것: `endpoint`, `reason.label`/`kind`, `language`, `usage`, `statusSupport`, `fileCount`. 화면에 필요해지면 그때 꺼내 쓴다. 특히 `statusSupport`는 "실시간 연동 전" 표시와 상태 API 호출 여부에 필요하다.
 
@@ -418,7 +420,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 ```ts
 import type { Analysis, ApiError, ErrorCode, ProviderCategory, ProviderDetail, ProviderId, ProviderStatus } from './contract.js'; // 4장 타입
 
-// 프론트 타입 (원래 정의에서 값만 넓힘: skipped.reason, category(database), AnalyzeError.kind, snippetStartLine)
+// 프론트 타입 (원래 정의에서 값만 넓힘: skipped.reason, category(database), AnalyzeError.kind, snippetStartLine, 상태 다섯 가지)
 export type FrontAnalysisResult = {
   repo: { owner: string; name: string; branch: string; commit: string };
   files: string[];
@@ -437,7 +439,8 @@ export type AnalyzeError = {
   resetAt?: string;
   retryAfter?: number;
 };
-export type FrontProviderStatus = { providerId: ProviderId; state: 'ok' | 'degraded' | 'unknown'; description: string; fetchedAt: string };
+// 상태는 합치지 않는다: 정상·성능 저하·장애·점검 중·알 수 없음
+export type FrontProviderStatus = { providerId: ProviderId; state: ProviderStatus['state']; description: string; fetchedAt: string };
 
 const API = 'http://localhost:3000/api';
 
@@ -515,8 +518,7 @@ export async function analyze(repoUrl: string, onSteps?: (steps: Analysis['steps
 export async function providerStatus(providerId: ProviderId): Promise<FrontProviderStatus> {
   try {
     const s = await call<ProviderStatus>(`/providers/${providerId}/status`);
-    const state = s.state === 'operational' ? 'ok' : s.state === 'unknown' ? 'unknown' : 'degraded';
-    return { providerId, state, description: s.description, fetchedAt: s.fetchedAt };
+    return { providerId, state: s.state, description: s.description, fetchedAt: s.fetchedAt };
   } catch {
     return { providerId, state: 'unknown', description: '상태 확인 불가', fetchedAt: new Date().toISOString() };
   }

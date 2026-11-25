@@ -5,6 +5,8 @@ import { MAX_SOURCE_BYTES } from '../src/engine/files.js';
 import { RateLimiter } from '../src/server/analyses/rate-limiter.js';
 import { loadConfig, type AppConfig } from '../src/server/config.js';
 import { isOriginAllowed } from '../src/server/cors.js';
+import { trustProxyOption } from '../src/server/proxy.js';
+import Fastify from 'fastify';
 import { parseDemoEvent } from '../src/server/demo/demo.controller.js';
 import { ApiException } from '../src/server/errors.js';
 import { parseRepoUrl } from '../src/server/github/github.client.js';
@@ -68,6 +70,33 @@ describe('CORS', () => {
       'http://localhost:9000',
     ]);
     expect(() => loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'localhost:9000' })).toThrow(/CORS_ORIGINS/);
+  });
+});
+
+describe('TRUST_PROXY (요청 제한에 쓰는 사용자 IP)', () => {
+  // 사용자(203.0.113.7) → Cloudflare(172.64.1.1) → 프론트 서버(10.0.0.5) → 백엔드
+  const ipSeenBy = async (trust: AppConfig['trustProxy'], forwardedFor: string) => {
+    const app = Fastify({ trustProxy: trustProxyOption(trust) });
+    app.get('/', async (req) => req.ip);
+    const res = await app.inject({ method: 'GET', url: '/', remoteAddress: '10.0.0.5', headers: { 'x-forwarded-for': forwardedFor } });
+    await app.close();
+    return res.body;
+  };
+
+  it('설정 안 하면 모두 프론트 서버 IP로 보인다 (한도 하나를 나눠 씀)', async () => {
+    expect(await ipSeenBy(false, '203.0.113.7, 172.64.1.1')).toBe('10.0.0.5');
+  });
+
+  it('Cloudflare + 프론트 서버면 2로 사용자 IP를 얻는다', async () => {
+    expect(await ipSeenBy(2, '203.0.113.7, 172.64.1.1')).toBe('203.0.113.7');
+  });
+
+  it('단계 수가 모자라면 Cloudflare IP로 센다', async () => {
+    expect(await ipSeenBy(1, '203.0.113.7, 172.64.1.1')).toBe('172.64.1.1');
+  });
+
+  it('사용자가 X-Forwarded-For를 꾸며 보내도 2단계 밖은 믿지 않는다', async () => {
+    expect(await ipSeenBy(2, '1.1.1.1, 203.0.113.7, 172.64.1.1')).toBe('203.0.113.7');
   });
 });
 
