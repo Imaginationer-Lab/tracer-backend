@@ -1,0 +1,30 @@
+{
+  "name": "outage-map-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "test:all": "node scripts/test-all.mjs"
+  },
+  "dependencies": {
+    "@nestjs/common": "^12.6.0",
+    "@nestjs/core": "^12.6.0",
+    "@nestjs/platform-fastify": "^12.6.0",
+    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "fastify": "^5.12.8",
+    "pg": "^8.23.1",
+    "piscina": "^5.3.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "tar-stream": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.7",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.1"
+  }
+}

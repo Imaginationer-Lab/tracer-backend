@@ -1,0 +1,70 @@
+// 순서대로 한 번씩만 실행된다 (schema_migrations에 기록). 이미 배포된 항목은 고치지 말고 새 항목을 추가한다.
+// Postgres는 DDL도 트랜잭션에 묶이므로, 항목 하나가 중간에 실패하면 통째로 되돌아간다.
+//   ① analyses             저장소·커밋·규칙 버전별 분석 결과 (저장소별 캐시)
+//   ② clue_classifications 단서(의존성·host·호출)별 LLM 판정 (모든 저장소 공유)
+//   ③ endpoints            공급자 엔드포인트와 상태 페이지 컴포넌트 (모든 저장소 공유)
+//      analysis_endpoints  어느 분석의 어느 파일·줄이 그 엔드포인트를 쓰는지
+//   ④ learned_rules        검증을 통과한 학습 규칙 (모든 저장소 공유)
+// 자료형 선택 이유는 docs/postgres.md
+
+export const MIGRATIONS: { id: string; sql: string[] }[] = [
+  {
+    id: '001_init',
+    sql: [
+      `CREATE TABLE analyses (
+        id              text        PRIMARY KEY,
+        owner           text        NOT NULL,
+        repo            text        NOT NULL,
+        branch          text        NOT NULL,
+        commit_sha      char(40)    NOT NULL,
+        ruleset_version text        NOT NULL,
+        status          text        NOT NULL CHECK (status IN ('running', 'done', 'failed')),
+        steps           jsonb       NOT NULL,
+        error           jsonb,
+        result          jsonb,
+        details         jsonb,
+        ambiguous       jsonb,
+        stats           jsonb,
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        updated_at      timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT uq_analyses_commit UNIQUE (owner, repo, commit_sha, ruleset_version)
+      )`,
+      // 서버 시작 때 'running'만 찾으므로 그 행만 담는 부분 인덱스
+      `CREATE INDEX ix_analyses_running ON analyses (id) WHERE status = 'running'`,
+      `CREATE TABLE clue_classifications (
+        clue_key   text        PRIMARY KEY,
+        kind       text        NOT NULL CHECK (kind IN ('http', 'host', 'dependency')),
+        provider   text        NOT NULL,
+        service    text,
+        model      text,
+        hits       integer     NOT NULL DEFAULT 0,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+      `CREATE TABLE endpoints (
+        id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        provider   text        NOT NULL,
+        host       text        NOT NULL,
+        path       text        NOT NULL DEFAULT '',
+        component  text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT uq_endpoints UNIQUE (provider, host, path)
+      )`,
+      `CREATE TABLE analysis_endpoints (
+        analysis_id text    NOT NULL REFERENCES analyses (id) ON DELETE CASCADE,
+        endpoint_id bigint  NOT NULL REFERENCES endpoints (id),
+        file_path   text    NOT NULL,
+        line        integer NOT NULL,
+        PRIMARY KEY (analysis_id, endpoint_id, file_path, line)
+      )`,
+      `CREATE INDEX ix_analysis_endpoints_endpoint ON analysis_endpoints (endpoint_id)`,
+      `CREATE TABLE learned_rules (
+        id          text        PRIMARY KEY,
+        provider    text        NOT NULL,
+        rule        jsonb       NOT NULL,
+        verified_on jsonb,
+        hits        integer     NOT NULL DEFAULT 0,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      )`,
+    ],
+  },
+];

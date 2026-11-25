@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: demo-store
+payment:
+  stripe:
+    api-key: ${STRIPE_API_KEY}
+supabase:
+  url: https://abcd.supabase.co
+partner:
+  shipping-url: ${SHIPPING_URL:https://api.shipping-partner.kr}
