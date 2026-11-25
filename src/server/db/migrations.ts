@@ -1,71 +1,70 @@
 // 순서대로 한 번씩만 실행된다 (schema_migrations에 기록). 이미 배포된 항목은 고치지 말고 새 항목을 추가한다.
-//   ① analyses            저장소·커밋·규칙 버전별 분석 결과 (저장소별 캐시)
+// Postgres는 DDL도 트랜잭션에 묶이므로, 항목 하나가 중간에 실패하면 통째로 되돌아간다.
+//   ① analyses             저장소·커밋·규칙 버전별 분석 결과 (저장소별 캐시)
 //   ② clue_classifications 단서(의존성·host·호출)별 LLM 판정 (모든 저장소 공유)
 //   ③ endpoints            공급자 엔드포인트와 상태 페이지 컴포넌트 (모든 저장소 공유)
 //      analysis_endpoints  어느 분석의 어느 파일·줄이 그 엔드포인트를 쓰는지
 //   ④ learned_rules        검증을 통과한 학습 규칙 (모든 저장소 공유)
+// 자료형 선택 이유는 docs/postgres.md
 
 export const MIGRATIONS: { id: string; sql: string[] }[] = [
   {
     id: '001_init',
     sql: [
       `CREATE TABLE analyses (
-        id              VARCHAR(32)  NOT NULL PRIMARY KEY,
-        owner           VARCHAR(100) NOT NULL,
-        repo            VARCHAR(100) NOT NULL,
-        branch          VARCHAR(255) NOT NULL,
-        commit_sha      CHAR(40)     NOT NULL,
-        ruleset_version VARCHAR(20)  NOT NULL,
-        status          ENUM('running', 'done', 'failed') NOT NULL,
-        steps           JSON NOT NULL,
-        error           JSON NULL,
-        result          JSON NULL,
-        details         JSON NULL,
-        ambiguous       JSON NULL,
-        stats           JSON NULL,
-        created_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        updated_at      DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-        UNIQUE KEY uq_analyses_commit (owner, repo, commit_sha, ruleset_version),
-        KEY ix_analyses_status (status)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`,
+        id              text        PRIMARY KEY,
+        owner           text        NOT NULL,
+        repo            text        NOT NULL,
+        branch          text        NOT NULL,
+        commit_sha      char(40)    NOT NULL,
+        ruleset_version text        NOT NULL,
+        status          text        NOT NULL CHECK (status IN ('running', 'done', 'failed')),
+        steps           jsonb       NOT NULL,
+        error           jsonb,
+        result          jsonb,
+        details         jsonb,
+        ambiguous       jsonb,
+        stats           jsonb,
+        created_at      timestamptz NOT NULL DEFAULT now(),
+        updated_at      timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT uq_analyses_commit UNIQUE (owner, repo, commit_sha, ruleset_version)
+      )`,
+      // 서버 시작 때 'running'만 찾으므로 그 행만 담는 부분 인덱스
+      `CREATE INDEX ix_analyses_running ON analyses (id) WHERE status = 'running'`,
       `CREATE TABLE clue_classifications (
-        clue_key   VARCHAR(191) NOT NULL PRIMARY KEY,
-        kind       ENUM('http', 'host', 'dependency') NOT NULL,
-        provider   VARCHAR(40)  NOT NULL,
-        service    VARCHAR(100) NULL,
-        model      VARCHAR(60)  NULL,
-        hits       INT          NOT NULL DEFAULT 0,
-        created_at DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`,
+        clue_key   text        PRIMARY KEY,
+        kind       text        NOT NULL CHECK (kind IN ('http', 'host', 'dependency')),
+        provider   text        NOT NULL,
+        service    text,
+        model      text,
+        hits       integer     NOT NULL DEFAULT 0,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
       `CREATE TABLE endpoints (
-        id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-        endpoint_key CHAR(40)     NOT NULL,
-        provider     VARCHAR(40)  NOT NULL,
-        host         VARCHAR(255) NOT NULL,
-        path         VARCHAR(512) NOT NULL DEFAULT '',
-        component    VARCHAR(120) NULL,
-        created_at   DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-        UNIQUE KEY uq_endpoints_key (endpoint_key),
-        KEY ix_endpoints_provider (provider)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`,
+        id         bigint      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        provider   text        NOT NULL,
+        host       text        NOT NULL,
+        path       text        NOT NULL DEFAULT '',
+        component  text,
+        created_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT uq_endpoints UNIQUE (provider, host, path)
+      )`,
       `CREATE TABLE analysis_endpoints (
-        analysis_id VARCHAR(32)     NOT NULL,
-        endpoint_id BIGINT UNSIGNED NOT NULL,
-        file_path   VARCHAR(512)    NOT NULL,
-        line        INT             NOT NULL,
-        PRIMARY KEY (analysis_id, endpoint_id, file_path(191), line),
-        KEY ix_analysis_endpoints_endpoint (endpoint_id),
-        CONSTRAINT fk_ae_analysis FOREIGN KEY (analysis_id) REFERENCES analyses (id) ON DELETE CASCADE,
-        CONSTRAINT fk_ae_endpoint FOREIGN KEY (endpoint_id) REFERENCES endpoints (id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`,
+        analysis_id text    NOT NULL REFERENCES analyses (id) ON DELETE CASCADE,
+        endpoint_id bigint  NOT NULL REFERENCES endpoints (id),
+        file_path   text    NOT NULL,
+        line        integer NOT NULL,
+        PRIMARY KEY (analysis_id, endpoint_id, file_path, line)
+      )`,
+      `CREATE INDEX ix_analysis_endpoints_endpoint ON analysis_endpoints (endpoint_id)`,
       `CREATE TABLE learned_rules (
-        id          VARCHAR(120) NOT NULL PRIMARY KEY,
-        provider    VARCHAR(40)  NOT NULL,
-        rule        JSON         NOT NULL,
-        verified_on JSON         NULL,
-        hits        INT          NOT NULL DEFAULT 0,
-        created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci`,
+        id          text        PRIMARY KEY,
+        provider    text        NOT NULL,
+        rule        jsonb       NOT NULL,
+        verified_on jsonb,
+        hits        integer     NOT NULL DEFAULT 0,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      )`,
     ],
   },
 ];

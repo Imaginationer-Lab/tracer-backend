@@ -35,7 +35,7 @@ function trustProxy(raw: string | undefined): AppConfig['trustProxy'] {
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const databaseUrl = env.DATABASE_URL;
-  if (!databaseUrl) throw new Error('DATABASE_URL is required (mysql://user:pass@host:3306/db)');
+  if (!databaseUrl) throw new Error('DATABASE_URL is required (postgres://user:pass@host:5432/db)');
   return {
     port: int(env, 'PORT', 3000),
     githubToken: env.GITHUB_TOKEN || null,
