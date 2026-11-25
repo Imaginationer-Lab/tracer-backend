@@ -5,3 +5,8 @@ services:
   api:
     # 호스트 포트를 열지 않는다. newman은 compose 네트워크 안에서 http://api:3000 으로 붙는다
     ports: !reset []
+    # AI 대신 고정 판정을 쓴다 (비용 없이 같은 결과). 판정 파일은 단위 테스트와 같다
+    environment:
+      CLUE_FIXTURE_FILE: /fixtures/judgments.json
+    volumes:
+      - ./test/fixtures/judgments.json:/fixtures/judgments.json:ro
