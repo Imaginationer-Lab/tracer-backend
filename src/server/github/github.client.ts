@@ -1,9 +1,15 @@
-// GitHub REST 호출. 분석 1회에 3번 (저장소, 커밋, tarball)만 부른다.
+// GitHub 호출. 분석 1회에 REST 4번 (저장소, 커밋, 트리, tarball) 또는
+// REST 3번 + GraphQL 몇 번 (큰 저장소에서 필요한 파일만 받을 때).
 
+import { Readable, Transform } from 'node:stream';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { Inject, Injectable } from '@nestjs/common';
 import type { RepoRef } from '../../api/contract.js';
+import type { RepoFile } from '../../engine/types.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
 import { ApiException } from '../errors.js';
+import { fetchBlobs, type GraphQLResponse } from './blobs.js';
+import type { TreeEntry } from './repo-plan.js';
 
 const API = 'https://api.github.com';
 const REPO_CACHE_MS = 60_000;
@@ -28,10 +34,9 @@ export class GitHubClient {
     const hit = this.repoCache.get(cacheKey);
     if (hit && hit.expires > Date.now()) return hit.value;
 
-    const repo = (await this.getJson(`/repos/${owner}/${name}`)) as { private: boolean; default_branch: string; size: number; owner: { login: string }; name: string };
+    const repo = (await this.getJson(`/repos/${owner}/${name}`)) as { private: boolean; default_branch: string; owner: { login: string }; name: string };
     if (repo.private) throw new ApiException('REPO_NOT_ACCESSIBLE');
-    // size는 KB. 압축 전 저장소 전체 크기라 tarball 상한의 몇 배까지는 봐준다
-    if (repo.size * 1024 > this.cfg.maxTarballBytes * 4) throw new ApiException('REPO_TOO_LARGE');
+    // 크기는 여기서 보지 않는다. repo.size는 git 기록까지 포함해서, 코드는 작아도 거절하게 된다 (트리로 판단: repo-plan.ts)
     const commit = (await this.getJson(`/repos/${owner}/${name}/commits/${encodeURIComponent(repo.default_branch)}`)) as { sha: string };
 
     const value: RepoRef = { owner: repo.owner.login, name: repo.name, branch: repo.default_branch, commit: commit.sha };
@@ -39,37 +44,57 @@ export class GitHubClient {
     return value;
   }
 
-  async downloadTarball(repo: RepoRef): Promise<Buffer> {
-    const res = await this.request(`/repos/${repo.owner}/${repo.name}/tarball/${repo.commit}`, 60_000);
+  /** 경로·크기 목록. 항목이 10만 개를 넘거나 7MB를 넘으면 GitHub가 잘라서 truncated가 true다 */
+  async getTree(repo: RepoRef): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+    const tree = (await this.getJson(`/repos/${repo.owner}/${repo.name}/git/trees/${repo.commit}?recursive=1`, 30_000)) as { tree: TreeEntry[]; truncated: boolean };
+    return { entries: tree.tree, truncated: tree.truncated };
+  }
+
+  /** tarball을 메모리에 모으지 않고 스트림으로 넘긴다. 받은 크기가 상한을 넘으면 스트림이 REPO_TOO_LARGE로 끝난다 */
+  async openTarball(repo: RepoRef): Promise<Readable> {
+    const res = await this.request(`/repos/${repo.owner}/${repo.name}/tarball/${repo.commit}`, { timeoutMs: 120_000 });
     const declared = Number(res.headers.get('content-length') ?? 0);
     if (declared > this.cfg.maxTarballBytes) throw new ApiException('REPO_TOO_LARGE');
     if (!res.body) throw new ApiException('GITHUB_UNAVAILABLE');
-    const reader = res.body.getReader();
-    const chunks: Buffer[] = [];
+    const max = this.cfg.maxTarballBytes;
     let size = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > this.cfg.maxTarballBytes) {
-        await reader.cancel();
-        throw new ApiException('REPO_TOO_LARGE');
-      }
-      chunks.push(Buffer.from(value));
-    }
-    return Buffer.concat(chunks);
+    const cap = new Transform({
+      transform(chunk: Buffer, _enc, cb) {
+        size += chunk.length;
+        cb(size > max ? new ApiException('REPO_TOO_LARGE') : null, chunk);
+      },
+    });
+    const body = Readable.fromWeb(res.body as WebReadableStream<Uint8Array>);
+    body.on('error', (err) => cap.destroy(err instanceof ApiException ? err : new ApiException('GITHUB_UNAVAILABLE')));
+    return body.pipe(cap);
   }
 
-  private async getJson(path: string): Promise<unknown> {
-    const res = await this.request(path, 10_000);
+  /** GraphQL은 토큰이 있어야 쓸 수 있다 */
+  get canFetchFiles(): boolean {
+    return !!this.cfg.githubToken;
+  }
+
+  /** 필요한 파일 내용만 받는다 (blobs.ts) */
+  async fetchFiles(repo: RepoRef, paths: string[]): Promise<RepoFile[]> {
+    return fetchBlobs(repo, paths, async (query) => {
+      const res = await this.request('/graphql', { timeoutMs: 30_000, method: 'POST', body: JSON.stringify({ query }) });
+      return (await res.json()) as GraphQLResponse;
+    });
+  }
+
+  private async getJson(path: string, timeoutMs = 10_000): Promise<unknown> {
+    const res = await this.request(path, { timeoutMs });
     return res.json();
   }
 
-  private async request(path: string, timeoutMs: number): Promise<Response> {
+  private async request(path: string, { timeoutMs, method = 'GET', body }: { timeoutMs: number; method?: string; body?: string }): Promise<Response> {
     let res: Response;
     try {
       res = await fetch(`${API}${path}`, {
+        method,
+        ...(body ? { body } : {}),
         headers: {
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
           Accept: 'application/vnd.github+json',
           'X-GitHub-Api-Version': '2022-11-28',
           'User-Agent': 'outage-map-analyzer',

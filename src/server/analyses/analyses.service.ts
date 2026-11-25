@@ -1,18 +1,18 @@
 // 분석 요청 흐름
 //   POST: URL 검사 → GitHub에서 저장소·커밋 확인(동기) → 캐시(저장소+커밋+규칙 버전) 확인
-//         → 없으면 IP 토큰 사용 → 작업 생성(202) → 백그라운드에서 tarball → 엔진 → 저장
-//   캐시 적중, 형식 오류, GitHub 오류는 IP 토큰을 쓰지 않는다.
+//         → 없으면 트리로 받을 파일을 정함(동기, 너무 크면 여기서 413) → IP 토큰 사용 → 작업 생성(202)
+//         → 백그라운드에서 파일 받기(tarball 또는 필요한 파일만) → 엔진 → AI 분류 → 저장
+//   캐시 적중, 형식 오류, 크기 초과, GitHub 오류는 IP 토큰을 쓰지 않는다.
 
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { Analysis, ProviderDetail, ProviderId, StepKey, StepState } from '../../api/contract.js';
 import { BUILTIN_RULES, PROVIDER_IDS, PROVIDERS, rulesetVersion, type Rule } from '../../engine/rules.js';
 import type { WorkerOutput } from '../../engine/worker.js';
-import { APP_CONFIG, type AppConfig } from '../config.js';
 import { AnalysisRepository, type AnalysisRecord } from '../db/analysis.repository.js';
 import { ApiException, ERRORS } from '../errors.js';
 import { GitHubClient, parseRepoUrl } from '../github/github.client.js';
-import { extractRepoFiles } from '../github/tarball.js';
+import { RepoLoader, type LoadPlan } from '../github/repo-loader.js';
 import { ClueClassifier } from '../llm/clue-classifier.js';
 import { EnginePool } from './engine-pool.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -34,9 +34,9 @@ export class AnalysesService implements OnModuleInit {
   private rules: { list: Rule[]; version: string; loadedAt: number } | null = null;
 
   constructor(
-    @Inject(APP_CONFIG) private readonly cfg: AppConfig,
     private readonly repo: AnalysisRepository,
     private readonly github: GitHubClient,
+    private readonly loader: RepoLoader,
     private readonly pool: EnginePool,
     private readonly limiter: RateLimiter,
     private readonly classifier: ClueClassifier,
@@ -56,6 +56,7 @@ export class AnalysesService implements OnModuleInit {
     if (cached && cached.status !== 'failed') return { analysis: toAnalysis(cached), created: false };
 
     if (this.pool.busy) throw new ApiException('RATE_LIMITED', { retryAfter: 30 });
+    const plan = await this.loader.plan(ref);
     const token = this.limiter.take(ip);
     if (!token.ok) throw new ApiException('RATE_LIMITED', { retryAfter: token.retryAfter });
 
@@ -70,7 +71,7 @@ export class AnalysesService implements OnModuleInit {
       throw new ApiException('INTERNAL_ERROR');
     }
 
-    void this.run(id, ref, rules.list);
+    void this.run(id, ref, rules.list, plan);
     return { analysis: { id, status: 'running', repo: ref, steps: initial, error: null, result: null }, created: true };
   }
 
@@ -90,11 +91,13 @@ export class AnalysesService implements OnModuleInit {
     return record.details?.[providerId as ProviderId] ?? { provider: { id: p.id, name: p.name, statusPageUrl: p.statusPageUrl }, evidence: [] };
   }
 
-  private async run(id: string, ref: Analysis['repo'], rules: Rule[]): Promise<void> {
+  private async run(id: string, ref: Analysis['repo'], rules: Rule[], plan: LoadPlan): Promise<void> {
     let current: StepKey = 'files';
     try {
-      const tarball = await this.github.downloadTarball(ref);
-      const files = await extractRepoFiles(tarball, { maxFiles: this.cfg.maxRepoFiles, maxBytes: this.cfg.maxTarballBytes * 8 });
+      const t0 = Date.now();
+      const files = await this.loader.load(ref, plan);
+      const how = plan.via === 'files' ? `필요한 파일만 ${plan.plan.fetch.length}개` : 'tarball';
+      this.logger.log(`${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 파일 받음: ${how}, ${Date.now() - t0}ms`);
       current = 'detect';
       await this.repo.updateSteps(id, steps('done', 'done', 'running'));
       let out: WorkerOutput = await this.pool.run(files, rules);

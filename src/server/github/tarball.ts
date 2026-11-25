@@ -1,4 +1,4 @@
-// GitHub tarball(.tar.gz)을 디스크에 풀지 않고 메모리에서 RepoFile[]로 바꾼다.
+// GitHub tarball(.tar.gz)을 디스크에 풀지 않고 받으면서 바로 RepoFile[]로 바꾼다 (tarball 전체를 메모리에 두지 않음).
 // 남이 만든 압축 파일이라: 일반 파일만 읽고(심볼릭 링크 무시), '..' 경로를 버리고, 파일 수와 풀린 크기에 상한을 둔다.
 
 import { Readable } from 'node:stream';
@@ -14,7 +14,7 @@ export interface TarLimits {
   maxBytes: number;
 }
 
-export async function extractRepoFiles(tarball: Buffer, limits: TarLimits): Promise<RepoFile[]> {
+export async function extractRepoFiles(tarball: Buffer | Readable, limits: TarLimits): Promise<RepoFile[]> {
   const files: RepoFile[] = [];
   let totalBytes = 0;
   const ex = extract();
@@ -67,7 +67,16 @@ export async function extractRepoFiles(tarball: Buffer, limits: TarLimits): Prom
 
   const gunzip = createGunzip();
   gunzip.on('error', (err) => ex.destroy(err));
-  Readable.from(tarball).pipe(gunzip).pipe(ex);
-  await done;
+  const source = Buffer.isBuffer(tarball) ? Readable.from(tarball) : tarball;
+  // 받는 도중 오류(크기 상한, 연결 끊김)도 같은 경로로 끝낸다
+  source.on('error', (err) => ex.destroy(err));
+  source.pipe(gunzip).pipe(ex);
+  try {
+    await done;
+  } catch (err) {
+    // 중간에 끝냈으면 남은 다운로드도 멈춘다
+    source.destroy();
+    throw err;
+  }
   return files;
 }
