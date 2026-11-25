@@ -12,7 +12,8 @@ import { DYN, type CallFact, type DeclFact, type FileFacts, type ValueFact } fro
 import type { CodeFacts, Evidence, Lang, Location, ProviderId } from './types.js';
 
 export type Outcome =
-  | { type: 'provider'; provider: ProviderId; label: string; path?: string; ruleId: string }
+  /** host: host 규칙으로 판정했을 때만 있다 (설정 키로 판정하면 실제 host를 모름) */
+  | { type: 'provider'; provider: ProviderId; label: string; host?: string; path?: string; ruleId: string }
   | { type: 'internal' }
   | { type: 'relative'; path: string }
   | { type: 'external'; host: string }
@@ -46,6 +47,11 @@ export interface FileResolution {
 interface Binding {
   qualified: string;
   providers: Set<ProviderId>;
+  /**
+   * false면 공급자가 함수 본문 등에서 참조한 이름으로만 전파된 것 (checkEnv()가 안에서 stripe를 쓰는 경우).
+   * 이런 이름은 다른 파일로 넘길 때(1-hop)만 쓰고, 같은 파일의 호출 근거로는 세지 않는다.
+   */
+  direct: boolean;
   /** HTTP 클라이언트 인스턴스면 기준 주소 */
   http?: { base?: ValueFact };
 }
@@ -89,7 +95,7 @@ export function resolveUrlPattern(raw: string, rules: Rule[]): Outcome | null {
     if (isInternalHost(host)) return { type: 'internal' };
     const path = pathOf(decodeURIComponent(url.pathname).split(PLACEHOLDER).join(DYN));
     for (const r of rulesOf(rules, 'host')) {
-      if (globMatch(r.match.host, host)) return { type: 'provider', provider: r.provider, label: display, ...(path ? { path } : {}), ruleId: r.id };
+      if (globMatch(r.match.host, host)) return { type: 'provider', provider: r.provider, label: display, host: display, ...(path ? { path } : {}), ruleId: r.id };
     }
     return { type: 'external', host: display };
   }
@@ -101,12 +107,17 @@ export function resolveUrlPattern(raw: string, rules: Rule[]): Outcome | null {
 function resolveBareHost(value: string, rules: Rule[]): Outcome | null {
   if (!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(value)) return null;
   for (const r of rulesOf(rules, 'host')) {
-    if (globMatch(r.match.host, value.toLowerCase())) return { type: 'provider', provider: r.provider, label: value.toLowerCase(), ruleId: r.id };
+    if (globMatch(r.match.host, value.toLowerCase())) return { type: 'provider', provider: r.provider, label: value.toLowerCase(), host: value.toLowerCase(), ruleId: r.id };
   }
   return null;
 }
 
 export const looksLikeUrl = (v: string) => SCHEME_URL.test(v.trim());
+
+export function endpointOf(o: Outcome): Evidence['endpoint'] {
+  if (o.type !== 'provider' || !o.host) return undefined;
+  return o.path ? { host: o.host, path: o.path } : { host: o.host };
+}
 
 function pick(outs: Outcome[]): Outcome {
   for (const type of ['provider', 'external', 'unresolved', 'relative', 'internal'] as const) {
@@ -157,7 +168,7 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
         providers.add(p);
         viaLocal.add(p);
       });
-      bindings.set(b.local, { qualified, providers });
+      bindings.set(b.local, { qualified, providers, direct: true });
     }
     if (!imp.bindings.length) cross?.localImport(path, imp.module, '*', lang)?.forEach((p) => viaLocal.add(p));
     // import type은 바인딩만 만들고 근거로는 세지 않는다
@@ -176,7 +187,7 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
 
   const callProviders = (call: CallFact, q: string, binding?: Binding) => {
     const out = new Map<ProviderId, string | undefined>();
-    binding?.providers.forEach((p) => out.set(p, undefined));
+    if (binding?.direct) binding.providers.forEach((p) => out.set(p, undefined));
     for (const r of callRules) {
       const m = r.match;
       if (!globMatch(m.callee, q)) continue;
@@ -191,7 +202,7 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
   const typeInfo = (type: string) => {
     const r = qualify(type);
     const providers = new Map<ProviderId, string | undefined>();
-    r.binding?.providers.forEach((p) => providers.set(p, undefined));
+    if (r.binding?.direct) r.binding.providers.forEach((p) => providers.set(p, undefined));
     for (const rule of typeRules) {
       if ((globMatch(rule.match.name, type) || globMatch(rule.match.name, r.qualified)) && importOk(rule.match.whenImport)) providers.set(rule.provider, rule.id);
     }
@@ -272,21 +283,26 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
         } else if (r.binding?.http && /(?:build|create)\(\)$/.test(qualified)) http = r.binding.http;
       } else if (d.value?.ident && d.value.ident !== d.name) {
         const b = bindings.get(d.value.ident);
-        if (b) {
+        if (b?.direct) {
           qualified ??= b.qualified;
           b.providers.forEach((p) => providers.add(p));
           http ??= b.http;
         }
       }
+      const direct = providers.size > 0 || !!http;
       for (const ref of d.refs) if (ref !== d.name) bindings.get(ref)?.providers.forEach((p) => providers.add(p));
 
       const cur = bindings.get(d.name);
       if (!cur) {
         if (qualified || providers.size || http) {
-          bindings.set(d.name, { qualified: qualified ?? d.name, providers, ...(http ? { http } : {}) });
+          bindings.set(d.name, { qualified: qualified ?? d.name, providers, direct, ...(http ? { http } : {}) });
           changed = true;
         }
       } else {
+        if (direct && !cur.direct) {
+          cur.direct = true;
+          changed = true;
+        }
         for (const p of providers) {
           if (!cur.providers.has(p)) {
             cur.providers.add(p);
@@ -355,6 +371,7 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
         ruleId: o.ruleId,
         facts: use.kind === 'url' ? undefined : (cf ?? codeFacts(call)),
         role: roleFor(o.provider, call.callee, r.qualified, o.path),
+        endpoint: endpointOf(o),
       });
     } else if (o.type === 'external' && use.kind !== 'url') ambiguous.push({ kind: 'host', host: o.host, loc });
     else if (o.type === 'unresolved' && use.kind !== 'url') ambiguous.push({ kind: 'http', call: call.text, ...(o.hint ? { hint: o.hint } : {}), lang, loc });
@@ -367,7 +384,7 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
   }
   for (const s of facts.strings) {
     const o = looksLikeUrl(s.value) ? resolveUrlPattern(s.value, ctx.rules) : resolveBareHost(s.value, ctx.rules);
-    if (o?.type === 'provider') add(o.provider, s.line, 'url', o.label, { ruleId: o.ruleId, role: roleFor(o.provider, '', '', o.path) });
+    if (o?.type === 'provider') add(o.provider, s.line, 'url', o.label, { ruleId: o.ruleId, role: roleFor(o.provider, '', '', o.path), endpoint: endpointOf(o) });
   }
 
   // 다른 파일에 넘길 이름

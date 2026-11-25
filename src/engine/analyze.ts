@@ -8,7 +8,7 @@ import { javaHooks } from './lang/java.js';
 import { jsHooks } from './lang/js.js';
 import { pythonHooks } from './lang/python.js';
 import { mentionsAny, resolveModulePath, scanImportSpecifiers, TEXT_SIGNAL } from './locate.js';
-import { looksLikeUrl, resolveFile, resolveUrlPattern, type CrossFile, type FileResolution, type RawAmbiguous } from './resolve.js';
+import { endpointOf, looksLikeUrl, resolveFile, resolveUrlPattern, type CrossFile, type FileResolution, type RawAmbiguous } from './resolve.js';
 import { BUILTIN_RULES, COMMON_DEPENDENCIES, rulesetVersion, type Rule, type RuleMatch } from './rules.js';
 import { parseConfig, parseManifest, type Dependency, type SettingEntry } from './settings.js';
 import { extractFacts, getParser, type FileFacts, type Hooks } from './syntax.js';
@@ -168,7 +168,10 @@ export async function analyze(files: RepoFile[], options: AnalyzeOptions = {}): 
     }
     if (!looksLikeUrl(e.value)) continue;
     const o = resolveUrlPattern(e.value, rules);
-    if (o?.type === 'provider') evidence.push({ provider: o.provider, path: e.path, line: e.line, kind: 'config', detail: `${e.key} → ${o.label}`, ruleId: o.ruleId });
+    if (o?.type === 'provider') {
+      const endpoint = endpointOf(o);
+      evidence.push({ provider: o.provider, path: e.path, line: e.line, kind: 'config', detail: `${e.key} → ${o.label}`, ruleId: o.ruleId, ...(endpoint ? { endpoint } : {}) });
+    }
     else if (o?.type === 'external') raw.push({ kind: 'host', host: o.host, loc: { path: e.path, line: e.line } });
   }
 
