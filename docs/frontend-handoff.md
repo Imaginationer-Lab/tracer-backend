@@ -92,6 +92,7 @@
         "id": "stripe",
         "name": "Stripe",
         "role": "결제",
+        "category": "payment",
         "fileCount": 7,
         "files": [
           { "path": "server/dotnet/Program.cs", "line": 50 },
@@ -221,10 +222,13 @@ export interface ApiError {
 }
 // 오류 응답 본문: { error: ApiError }
 
+export type ProviderCategory = 'auth' | 'payment' | 'storage' | 'database';
+
 export interface ProviderSummary {
   id: ProviderId;
   name: string;
-  role: string;                                // 로그인 · 결제 · 파일 업로드 · 데이터베이스 · 파일 저장
+  role: string;                                // 화면용 라벨: 로그인 · 결제 · 파일 업로드 · 데이터베이스 · 파일 저장
+  category: ProviderCategory;                  // 기계용 분류 (로그인→auth, 결제→payment, 파일 업로드·파일 저장→storage, 데이터베이스→database)
   fileCount: number;
   files: { path: string; line: number }[];     // 공급자별 근거 파일
   usage: 'used' | 'declared-only';
@@ -399,7 +403,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | `repo` | `Analysis.repo` | 그대로 |
 | `files: string[]` | `result.files` 중 `state === 'analyzed'`의 `path` | 트리에 README 같은 비분석 파일도 보이려면 `state === 'other'`도 넣는다 |
 | `skipped[]` | `result.files` 중 `state === 'skipped'` | 사유 `too-large`→`too_large`, `minified`→`minified`, `parse-error`→`parse_error`. **`fetch_failed`는 생기지 않는다** (서버가 tarball 하나로 받음). 프론트 타입의 `reason`에 `minified`·`parse_error`를 더한다 |
-| `providers[].category` | `ProviderSummary.role` 한국어 라벨 → enum | 로그인→`auth`, 결제→`payment`, 파일 업로드·파일 저장→`storage`, 데이터베이스→`database`. 프론트 타입에 `database`를 더한다 |
+| `providers[].category` | `ProviderSummary.category` 그대로 | `auth`·`payment`·`storage`·`database`. 프론트 타입에 `database`를 더한다. 화면 문구는 `role`(한국어 라벨)을 쓴다 |
 | `providers[].files[]` (`path`, `line`, `snippet`) | `GET /analyses/:id/providers/:providerId`의 `evidence[]` (공급자당 1번, 최대 3번) | 순서는 강한 근거 순 (첫 항목이 "여기부터 확인하세요"). 줄 번호를 매기려면 `snippet.startLine`이 필요해서 `snippetStartLine`을 더한다 |
 | `providers[].facts` (공급자 단위) | `evidence[].facts` (근거 단위)를 합침 | 호출부가 여러 개면 **전부 처리할 때만 `true`**. `statusHandling` = `statusCheck`. 대응 가이드의 "○○.ts에 … 없어요"처럼 파일 이름이 필요하면 근거 단위 `facts`를 그대로 쓴다 |
 | `AnalyzeError.kind` | `error.code` | `REPO_NOT_ACCESSIBLE`→`not_found`, `GITHUB_RATE_LIMITED`→`rate_limited`(`resetAt`), 그 밖은 `temporary`. 백엔드에만 있는 것: `INVALID_REPO_URL`→`invalid_url`, `REPO_TOO_LARGE`→`too_large`, 우리 서버 요청 제한 `RATE_LIMITED`→`busy`(`retryAfter`초). 이 세 값을 프론트 타입에 더한다 |
@@ -412,9 +416,9 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 4장 타입을 `contract.ts`로 두고 그대로 쓸 수 있다 (strict 타입 검사 통과).
 
 ```ts
-import type { Analysis, ApiError, ErrorCode, ProviderDetail, ProviderId, ProviderStatus } from './contract.js'; // 4장 타입
+import type { Analysis, ApiError, ErrorCode, ProviderCategory, ProviderDetail, ProviderId, ProviderStatus } from './contract.js'; // 4장 타입
 
-// 프론트 타입 (원래 정의에서 값만 넓힘: skipped.reason, category, AnalyzeError.kind, snippetStartLine)
+// 프론트 타입 (원래 정의에서 값만 넓힘: skipped.reason, category(database), AnalyzeError.kind, snippetStartLine)
 export type FrontAnalysisResult = {
   repo: { owner: string; name: string; branch: string; commit: string };
   files: string[];
@@ -422,7 +426,7 @@ export type FrontAnalysisResult = {
   providers: {
     id: ProviderId;
     name: string;
-    category: 'auth' | 'payment' | 'storage' | 'database';
+    category: ProviderCategory;
     files: { path: string; line: number; snippet: string[]; snippetStartLine: number }[];
     facts?: { retry: boolean; timeout: boolean; statusHandling: boolean };
   }[];
@@ -467,14 +471,6 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-// 백엔드 role(한국어 라벨) → category
-const CATEGORY: Record<string, FrontAnalysisResult['providers'][number]['category']> = {
-  로그인: 'auth',
-  결제: 'payment',
-  '파일 업로드': 'storage',
-  '파일 저장': 'storage',
-  데이터베이스: 'database',
-};
 const REASON = { 'too-large': 'too_large', minified: 'minified', 'parse-error': 'parse_error' } as const;
 
 /** POST → 1초 폴링 → 공급자 상세(최대 3번) → 프론트 타입 */
@@ -503,7 +499,7 @@ export async function analyze(repoUrl: string, onSteps?: (steps: Analysis['steps
       return {
         id: p.id,
         name: p.name,
-        category: CATEGORY[p.role] ?? 'storage',
+        category: p.category,
         // 근거는 강한 순서. 첫 항목이 "여기부터 확인하세요"
         files: evidence.map((e) => ({ path: e.path, line: e.line, snippet: e.snippet.lines, snippetStartLine: e.snippet.startLine })),
         // 호출부가 여러 개면 "전부 처리할 때만 true" (하나라도 빠지면 대응 가이드에 표시)

@@ -172,11 +172,12 @@ components:
 
     ProviderSummary:
       type: object
-      required: [id, name, role, fileCount, files, usage, statusSupport]
+      required: [id, name, role, category, fileCount, files, usage, statusSupport]
       properties:
         id: { $ref: '#/components/schemas/ProviderId' }
         name: { type: string }
-        role: { type: string, examples: [로그인, 결제, 파일 업로드] }
+        role: { type: string, description: 화면용 한국어 라벨, examples: [로그인, 결제, 파일 업로드] }
+        category: { type: string, enum: [auth, payment, storage, database], description: 기계용 분류 }
         fileCount: { type: integer }
         files:
           type: array

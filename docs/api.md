@@ -69,9 +69,9 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
   "error": null,
   "result": {
     "providers": [
-      { "id": "supabase", "name": "Supabase", "role": "로그인", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
-      { "id": "stripe", "name": "Stripe", "role": "결제", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 3 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
+      { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 3 } ], "usage": "used", "statusSupport": "none" }
     ],
     "files": [
       { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
