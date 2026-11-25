@@ -46,11 +46,15 @@ export function toAnalysisResult(r: EngineResult): AnalysisResult {
     const roles = new Map<string, number>();
     for (const e of list) if (e.role) roles.set(e.role, (roles.get(e.role) ?? 0) + 1);
     const role = [...roles].sort((a, b) => b[1] - a[1])[0]?.[0] ?? PROVIDERS[id].defaultRole;
+    const files = [...bestByFile(list).values()]
+      .sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.path.localeCompare(b.path))
+      .map((e) => ({ path: e.path, line: e.line }));
     providers.push({
       id,
       name: PROVIDERS[id].name,
       role,
-      fileCount: new Set(list.map((e) => e.path)).size,
+      fileCount: files.length,
+      files,
       usage: used ? 'used' : 'declared-only',
       statusSupport: PROVIDERS[id].statusApi ? 'live' : 'none',
     });
@@ -92,6 +96,7 @@ export function toProviderDetail(r: EngineResult, provider: ProviderId): Provide
       reason: { kind: e.kind, label: evidenceLabel(e) },
       snippet: { startLine: start, lines: lines.slice(start - 1, start + 4).map((l) => l.replace(/\r$/, '')) },
       facts: e.facts ?? null,
+      endpoint: e.endpoint ?? null,
     };
   });
   return { provider: { id: provider, name: info.name, statusPageUrl: info.statusPageUrl }, evidence };

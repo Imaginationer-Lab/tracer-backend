@@ -42,6 +42,7 @@ export class StatusService {
 
     const value: ProviderStatus = {
       providerId: id,
+      indicator,
       state: INDICATOR[indicator] ?? 'unknown',
       description: body.status.description,
       fetchedAt: new Date().toISOString(),

@@ -46,6 +46,8 @@ export interface ProviderSummary {
   name: string;
   role: string;
   fileCount: number;
+  /** 공급자별 근거 파일 (파일마다 대표 줄 하나, 강한 근거 순). 기능정의서 providers[].files[].path, line */
+  files: { path: string; line: number }[];
   /** declared-only: 의존성 선언만 있고 코드에서 쓰는 곳은 못 찾음 */
   usage: 'used' | 'declared-only';
   statusSupport: 'live' | 'none';
@@ -91,6 +93,8 @@ export interface EvidenceItem {
   reason: { kind: EvidenceKind; label: string };
   snippet: { startLine: number; lines: string[] };
   facts: CodeFacts | null;
+  /** 코드에서 식별한 API 엔드포인트 (host로 판정한 근거만). '*'는 동적인 부분. SDK 호출이면 null */
+  endpoint: { host: string; path?: string } | null;
 }
 
 export interface ProviderDetail {
@@ -100,6 +104,8 @@ export interface ProviderDetail {
 
 export interface ProviderStatus {
   providerId: ProviderId;
+  /** 공식 상태 JSON의 status.indicator 원래 값 (none · minor · major · critical · maintenance) */
+  indicator: string;
   state: 'operational' | 'degraded' | 'outage' | 'maintenance' | 'unknown';
   description: string;
   fetchedAt: string;

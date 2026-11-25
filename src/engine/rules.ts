@@ -183,7 +183,7 @@ export const BUILTIN_RULES: Rule[] = [
 ];
 
 /** 엔진 로직(추출·해석)을 바꿔서 같은 규칙으로도 결과가 달라지면 올린다. 분석 캐시 키에 들어간다. */
-export const ENGINE_VERSION = 2;
+export const ENGINE_VERSION = 3;
 
 export function rulesetVersion(rules: Rule[]): string {
   const payload = JSON.stringify([ENGINE_VERSION, rules.map((r) => [r.id, r.provider, r.langs, r.match])]);
