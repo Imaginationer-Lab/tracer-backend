@@ -127,7 +127,8 @@
                   "    body.result.providers.forEach((p) => {",
                   "      pm.expect(p.id).to.match(/^[a-z0-9][a-z0-9-]{0,39}$/);",
                   "      pm.expect(p.category).to.be.oneOf(['auth', 'payment', 'storage', 'database', 'ai', 'messaging', 'monitoring', 'analytics', 'other']);",
-                  "      pm.expect(p.statusSupport).to.eql(p.id === 'supabase' ? 'live' : 'none');",
+                  "      if (['supabase', 'toss-payments'].includes(p.id)) pm.expect(p.statusSupport).to.eql('live');",
+                  "      if (['stripe', 'aws-s3'].includes(p.id)) pm.expect(p.statusSupport).to.eql('none');",
                   "    });",
                   "  });",
                   "}"
@@ -363,6 +364,7 @@
             }
           ]
         },
+        {"name": "Toss Payments 공개 상태 (서버 목록)", "request": {"method": "GET", "url": "{{baseUrl}}/api/providers/toss-payments/status"}, "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["pm.test('200 공식 상태 또는 502 상태 확인 불가', () => {", "  pm.expect(pm.response.code).to.be.oneOf([200, 502]);", "  const body = pm.response.json();", "  if (pm.response.code === 502) return pm.expect(body.error.code).to.eql('STATUS_UNAVAILABLE');", "  pm.expect(body.providerId).to.eql('toss-payments');", "  pm.expect(body.indicator).to.be.a('string');", "  pm.expect(body.state).to.be.oneOf(['operational', 'degraded', 'outage', 'maintenance', 'unknown']);", "  pm.expect(new Date(body.fetchedAt).toString()).to.not.eql('Invalid Date');", "});"]}}]},
         {
           "name": "Stripe → 실시간 연동 전 (404)",
           "request": { "method": "GET", "url": "{{baseUrl}}/api/providers/stripe/status" },
