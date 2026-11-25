@@ -24,6 +24,8 @@ export interface AppConfig {
   llm: { apiKey: string; model: string; timeoutMs: number; maxItems: number } | null;
   /** 테스트용 고정 판정 파일. 있으면 AI·DB 대신 이것만 쓴다 */
   clueFixtureFile: string | null;
+  /** 서버 목록에 없는 서비스의 상태 페이지를 AI 웹 검색으로 찾는 하루 상한 */
+  statusDiscoveryDaily: number;
 }
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:9000', 'http://127.0.0.1:9000'];
@@ -77,5 +79,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         }
       : null,
     clueFixtureFile: env.CLUE_FIXTURE_FILE || null,
+    statusDiscoveryDaily: int(env, 'STATUS_DISCOVERY_DAILY', 100, 0),
   };
 }

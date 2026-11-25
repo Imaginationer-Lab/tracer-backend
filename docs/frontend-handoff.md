@@ -37,7 +37,7 @@
   150초가 지나도 running이면 멈추고 일시 오류로 표시
 
 [SCR-002 대시보드]  (분석 응답 result 하나로 공급자 목록·파일 트리를 그림)
-  statusSupport === 'live' 인 공급자마다 GET /providers/:id/status (Supabase만 해당)
+  statusSupport === 'live' 인 서비스마다 GET /providers/:id/status (Supabase, Toss Payments 등)
   공급자 선택 → GET /analyses/:id/providers/:providerId (근거 코드·코드 사실)
   데모 재현 켜기 → GET /demo-events/current
   '다른 저장소 분석' → 선택·재현 상태를 초기화하고 [SCR-001]로
@@ -91,7 +91,7 @@
       { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
       { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
       { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "toss-payments", "name": "Toss Payments", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/toss.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "toss-payments", "name": "Toss Payments", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/toss.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" }
     ],
     "otherServices": [],
     "files": [
@@ -191,7 +191,10 @@ SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storag
 
 ### 3-4. `GET /providers/:providerId/status` 공급자 공개 상태
 
-`statusSupport === "live"`인 공급자만 부른다 (지금은 Supabase만). 서버가 60초 캐시한다.
+`statusSupport === "live"`인 서비스만 부른다. 서버가 60초 캐시한다.
+
+- `live`인 서비스: 서버 목록에 공개 상태 API가 있는 곳(Supabase, Toss Payments, GitHub, Sentry, OpenAI, Vercel, Cloudflare, Notion 등 28곳)과, 처음 보는 서비스 중 서버가 상태 페이지를 찾아 검증한 곳.
+- 처음 보는 서비스는 분석이 끝난 뒤 서버가 백그라운드로 상태 페이지를 찾는다. 그래서 같은 분석을 나중에 다시 조회하면 `none`이 `live`로 바뀌어 있을 수 있다. 프론트가 할 일은 없다 (받은 값대로 그린다).
 
 ```json
 { "providerId": "supabase", "indicator": "none", "state": "operational", "description": "All Systems Operational", "fetchedAt": "2026-11-25T04:21:02.186Z" }
@@ -199,7 +202,7 @@ SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storag
 
 - `state`: `operational` · `degraded` · `outage` · `maintenance` · `unknown` (`indicator`가 Statuspage 원래 값)
 - 실패하면 `502 STATUS_UNAVAILABLE` → 그 공급자 행에만 "상태 확인 불가 · 다시 조회". 공급자 목록과 파일 트리는 그대로 쓴다.
-- `statusSupport: "none"`인 공급자(Stripe·S3)를 부르면 `404 STATUS_NOT_SUPPORTED`가 온다. 부르지 말고 "실시간 연동 전"을 표시한다.
+- `statusSupport: "none"`인 서비스(Stripe·Amazon S3 등)를 부르면 `404 STATUS_NOT_SUPPORTED`가 온다. 부르지 말고 "실시간 연동 전"을 표시한다.
 
 ### 3-5. `GET /demo-events/current` 데모 재현 이벤트
 
@@ -403,7 +406,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | 공개 예제 저장소 (주제 확정 "게시한 뒤 연결") | `Imaginationer-Lab/tracer-demo-store` (공개). 분석하면 디자인 SCR-002와 같은 결과가 나온다 (3-2) |
 | 빌드 설정(Dockerfile, serverless 설정 등) 읽기 (주제 확정 MVP) | 아직 안 함. 매니페스트와 설정 파일만 읽는다 |
 | LLM 분류·요약 | 탐지 자체를 AI가 한다: 서버가 뽑은 후보를 Claude가 서비스로 판정하고, 줄 번호는 코드 구조 분석으로 찾는다. 요약은 아직 없음 |
-| Expo 등 오하아사 사례 공급자 | `providers`에 같이 나온다 (근거 상세 포함). 상태 연동은 Supabase만 (기획도 3개 우선) |
+| Expo 등 오하아사 사례 공급자 | `providers`에 같이 나온다 (근거 상세 포함). 공개 상태 API가 있으면 상태 연동도 된다 (Expo는 서버 목록에 있음) |
 
 ## 8. 주의할 점
 
@@ -538,7 +541,7 @@ export async function analyze(repoUrl: string, onSteps?: (steps: Analysis['steps
   };
 }
 
-/** Supabase처럼 statusSupport === 'live'인 공급자만 부른다. 조회 실패(502)는 unknown */
+/** statusSupport === 'live'인 서비스만 부른다. 조회 실패(502)는 unknown */
 export async function providerStatus(providerId: ProviderId): Promise<FrontProviderStatus> {
   try {
     const s = await call<ProviderStatus>(`/providers/${providerId}/status`);

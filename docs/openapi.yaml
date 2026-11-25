@@ -75,7 +75,7 @@ paths:
   /providers/{providerId}/status:
     get:
       summary: 공급자 공개 상태 (서버 60초 캐시)
-      description: statusSupport=live인 공급자만 (현재 Supabase). none이면 404 STATUS_NOT_SUPPORTED.
+      description: statusSupport=live인 서비스만 (서버 목록 28곳 + AI 웹 검색으로 찾아 검증한 곳). none이면 404 STATUS_NOT_SUPPORTED.
       operationId: getProviderStatus
       parameters:
         - { name: providerId, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderId' } }
@@ -192,7 +192,7 @@ components:
               path: { type: string }
               line: { type: integer, minimum: 1 }
         usage: { type: string, enum: [used, declared-only] }
-        statusSupport: { type: string, enum: [live, none] }
+        statusSupport: { type: string, enum: [live, none], description: '읽을 때 정한다. 분석 뒤 상태 페이지를 찾으면 다음 조회부터 live' }
 
     FileEntry:
       oneOf:
