@@ -52,7 +52,7 @@ export function classifyHttp(lang: Lang, q: string, call: CallFact, onInstance: 
         return { kind: 'request', url: args[0], viaInstance: true };
       }
       if (/WebClient\.create$/.test(q) || /(?:WebClient|RestClient).*\.baseUrl$/.test(q)) return { kind: 'client', base: args[0] };
-      if (q === 'FeignClient') return { kind: 'client', base: o.url };
+      if (/(?:^|\.)FeignClient$/.test(q)) return { kind: 'client', base: o.url };
       return null;
     }
 
