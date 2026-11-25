@@ -1,6 +1,6 @@
 // 엔진 결과 → HTTP 응답 모양 (docs/api.md)
 
-import { PROVIDER_IDS, PROVIDERS } from '../engine/rules.js';
+import { categoryOf, PROVIDER_IDS, PROVIDERS } from '../engine/rules.js';
 import type { EngineResult, Evidence } from '../engine/types.js';
 import type { AnalysisResult, EvidenceItem, FileEntry, ProviderDetail, ProviderId, ProviderSummary } from './contract.js';
 
@@ -53,6 +53,7 @@ export function toAnalysisResult(r: EngineResult): AnalysisResult {
       id,
       name: PROVIDERS[id].name,
       role,
+      category: categoryOf(id, role),
       fileCount: files.length,
       files,
       usage: used ? 'used' : 'declared-only',

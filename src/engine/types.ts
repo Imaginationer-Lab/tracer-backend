@@ -1,6 +1,6 @@
-import type { CodeFacts, EvidenceKind, ProviderId, SkipReason } from '../api/contract.js';
+import type { CodeFacts, EvidenceKind, ProviderCategory, ProviderId, SkipReason } from '../api/contract.js';
 
-export type { CodeFacts, EvidenceKind, ProviderId, SkipReason };
+export type { CodeFacts, EvidenceKind, ProviderCategory, ProviderId, SkipReason };
 
 export type Lang = 'typescript' | 'tsx' | 'javascript' | 'python' | 'java' | 'csharp';
 export type Ecosystem = 'npm' | 'pypi' | 'maven' | 'nuget';

@@ -41,10 +41,15 @@ export interface ApiError {
   retryAfter?: number;
 }
 
+/** 기계가 읽는 공급자 역할 분류 (role은 화면용 한국어 라벨) */
+export type ProviderCategory = 'auth' | 'payment' | 'storage' | 'database';
+
 export interface ProviderSummary {
   id: ProviderId;
   name: string;
+  /** 화면용 한국어 라벨: 로그인 · 결제 · 파일 업로드 · 데이터베이스 · 파일 저장 */
   role: string;
+  category: ProviderCategory;
   fileCount: number;
   /** 공급자별 근거 파일 (파일마다 대표 줄 하나, 강한 근거 순). 기능정의서 providers[].files[].path, line */
   files: { path: string; line: number }[];

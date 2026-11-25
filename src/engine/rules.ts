@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Ecosystem, Lang, ProviderId } from './types.js';
+import type { Ecosystem, Lang, ProviderCategory, ProviderId } from './types.js';
 
 // ─── 규칙 스키마 ──────────────────────────────────────────────────────────────
 // 규칙은 DB에 JSON으로 저장할 수 있는 데이터다. 엔진이 해석만 하고 실행하지 않는다.
@@ -89,12 +89,27 @@ export function validateRule(value: unknown): { ok: true; rule: Rule } | { ok: f
 export interface ProviderInfo {
   id: ProviderId;
   name: string;
-  defaultRole: string;
+  defaultRole: RoleLabel;
   statusPageUrl: string;
   /** 공개 상태 API (Statuspage 형식). 없으면 "실시간 연동 전" */
   statusApi?: string;
   /** 근거의 호출식·URL 경로로 역할을 더 좁힌다 */
-  roles: { callee?: string; path?: string; role: string }[];
+  roles: { callee?: string; path?: string; role: RoleLabel }[];
+}
+
+/** 화면용 역할 라벨 → 기계용 분류. 새 역할은 여기에 먼저 넣어야 카탈로그에서 쓸 수 있다 (타입으로 강제) */
+export const ROLE_CATEGORY = {
+  로그인: 'auth',
+  결제: 'payment',
+  '파일 업로드': 'storage',
+  '파일 저장': 'storage',
+  데이터베이스: 'database',
+} as const satisfies Record<string, ProviderCategory>;
+
+export type RoleLabel = keyof typeof ROLE_CATEGORY;
+
+export function categoryOf(provider: ProviderId, role: string): ProviderCategory {
+  return (ROLE_CATEGORY as Record<string, ProviderCategory>)[role] ?? ROLE_CATEGORY[PROVIDERS[provider].defaultRole];
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
@@ -183,7 +198,7 @@ export const BUILTIN_RULES: Rule[] = [
 ];
 
 /** 엔진 로직(추출·해석)을 바꿔서 같은 규칙으로도 결과가 달라지면 올린다. 분석 캐시 키에 들어간다. */
-export const ENGINE_VERSION = 3;
+export const ENGINE_VERSION = 4;
 
 export function rulesetVersion(rules: Rule[]): string {
   const payload = JSON.stringify([ENGINE_VERSION, rules.map((r) => [r.id, r.provider, r.langs, r.match])]);
