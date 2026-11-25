@@ -45,9 +45,15 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
 2. **동기로** GitHub 저장소 조회: `GET /repos/{owner}/{repo}` → 기본 브랜치, `GET /repos/{owner}/{repo}/commits/{branch}` → 커밋 SHA
    - 오류는 이 단계에서 바로 응답한다. 그래서 조회 오류 3종이 입력 화면에 그대로 뜬다.
 3. `(owner, repo, commit, rulesetVersion)` 캐시가 있으면 `200`으로 완료된 분석을 그대로 돌려준다 (LLM·파싱 0회).
-4. 없으면 분석 작업을 만들고 `202`를 준다. 이후 tarball 한 번(`GET /repos/{o}/{r}/tarball/{sha}`)으로 파일을 받는다.
-   - 분석 1회당 GitHub API 3회. contents API로 파일을 하나씩 받으면 요청 한도에 바로 걸린다.
-   - 서버는 `GITHUB_TOKEN`을 써서 시간당 5,000회 한도로 돌린다 (토큰 없으면 IP당 60회).
+4. 없으면 **동기로** 트리(`GET /repos/{o}/{r}/git/trees/{sha}?recursive=1`, 경로·크기 목록)를 보고 받을 파일을 정한다.
+   - 읽을 파일(소스·매니페스트·설정) 수나 크기 합이 한도(`MAX_REPO_FILES` 20,000개, `MAX_SOURCE_MB` 100MB)를 넘으면 여기서 바로 `413 REPO_TOO_LARGE`. 이미지·영상·의존성 캐시·git 기록 크기는 세지 않는다.
+   - 512KB가 넘는 소스는 받지 않고 `skipped`(`too-large`)로 둔다.
+5. 분석 작업을 만들고 `202`를 준다. 이후 파일을 받는다.
+   - 저장소 전체가 작으면(`MAX_TARBALL_MB` 50MB 이하) tarball 한 번(`GET /repos/{o}/{r}/tarball/{sha}`). 받으면서 바로 풀고 메모리에 통째로 두지 않는다.
+   - 크면 필요한 파일만 GraphQL로 받는다 (한 쿼리에 50개, 동시에 8개). 예: KOIN_WEB_RECODE 전체 591MB → 972개 2.8MB, OpenMAIC 131MB → 2,266개 18MB.
+   - 트리가 잘릴 만큼 큰 저장소(항목 10만 개 이상)는 tarball로 받고 받는 크기 상한으로 거른다.
+   - 분석 1회당 GitHub REST 4회(저장소, 커밋, 트리, tarball) 또는 REST 3회 + GraphQL (파일 50개당 1점, 시간당 5,000점). contents API로 파일을 하나씩 받으면 요청 한도에 바로 걸린다.
+   - 서버는 `GITHUB_TOKEN`을 써서 시간당 5,000회 한도로 돌린다 (토큰 없으면 IP당 60회이고, 필요한 파일만 받는 방식은 쓰지 못한다).
 
 ```json
 // 202
@@ -204,10 +210,10 @@ GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 40
 ## 엔진과 연결
 
 ```
-tarball(메모리) → RepoFile[] → 워커 스레드 analyze() → present.ts → Postgres → 위 응답들
+트리 → tarball 스트림 또는 GraphQL(필요한 파일만) → RepoFile[] → 워커 스레드 analyze() → present.ts → Postgres → 위 응답들
                                        │
                                        ├─ endpoints[] ─▶ endpoints / analysis_endpoints
-                                       └─ ambiguous[] ─▶ (예정) LLM 분류 → clue_classifications
+                                       └─ ambiguous[] ─▶ Claude 분류 → clue_classifications
                                                           (예정) 규칙 제안 → 검증 → learned_rules
 ```
 
