@@ -147,23 +147,54 @@ FEAT-004. 서버에 들어 있는 재현 데이터 한 건을 검증해서 돌�
 |---|---|---|---|
 | `INVALID_REPO_URL` | 400 | 형식 오류 (프론트가 먼저 막음) | - |
 | `REPO_NOT_ACCESSIBLE` | 404 | 저장소에 접근할 수 없어요 | 없음 |
+| `REPO_TOO_LARGE` | 413 | 저장소가 너무 커서 분석할 수 없어요 | 없음 |
 | `GITHUB_RATE_LIMITED` | 429 | GitHub 요청 한도에 도달했어요 · `resetAt` 시각 | 없음 |
 | `GITHUB_UNAVAILABLE` | 502 | GitHub에 일시적으로 연결하지 못했어요 | 있음 (`retryable: true`) |
+| `RATE_LIMITED` | 429 | 요청이 많아요 · `retryAfter`초 뒤 다시 시도 (디자인에 화면 추가 필요) | 있음 |
 | `ANALYSIS_NOT_FOUND` | 404 | (만료된 id) 입력 화면으로 | - |
+| `ANALYSIS_NOT_READY` | 409 | 아직 분석 중 (상세를 너무 일찍 부름) | 있음 |
+| `PROVIDER_NOT_FOUND` | 404 | 지원하지 않는 공급자 id | - |
+| `STATUS_NOT_SUPPORTED` | 404 | 실시간 연동 전 (`statusSupport: none`인 공급자) | - |
 | `STATUS_UNAVAILABLE` | 502 | 상태 확인 불가 · 다시 조회 | 있음 |
 | `DEMO_EVENT_INVALID` | 500 | 데모 이벤트를 불러오지 못했어요 | 재현 끄기 |
+| `BAD_REQUEST` · `NOT_FOUND` · `INTERNAL_ERROR` | 400 · 404 · 500 | 공통 | `INTERNAL_ERROR`만 있음 |
 
 GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 404) · `403`/`429`에 `x-ratelimit-remaining: 0` → `GITHUB_RATE_LIMITED` (`x-ratelimit-reset`으로 `resetAt`) · `5xx`/네트워크 오류 → `GITHUB_UNAVAILABLE`
+
+**비공개 저장소는 서버 토큰으로 보이더라도 거부한다** (`private: true` → `REPO_NOT_ACCESSIBLE`). 서버 토큰의 권한으로 남의 비공개 코드가 분석되지 않게 하기 위해서다.
+
+## 요청 제한
+
+- **새 분석을 시작할 때만** IP별 토큰 버킷을 쓴다. 기본값은 한 번에 3개, 60초마다 1개 충전(`RATE_LIMIT_BURST`, `RATE_LIMIT_REFILL_SECONDS`)이다.
+- 세지 않는 것: 캐시 적중(같은 커밋), URL 형식 오류, GitHub 오류, 폴링(`GET`), 상태·데모 조회.
+- 1분에 1회로 딱 자르지 않는 이유: 행사장·학교 Wi-Fi는 모두가 공인 IP 하나를 쓰고, "예제 → 오타 → 내 저장소"가 1분 안에 일어난다.
+- 사이트 전체 동시 분석 수는 워커 수(`ANALYZER_THREADS`)와 대기열(`ANALYZER_QUEUE`)로 묶는다. 대기열이 차면 IP와 무관하게 `RATE_LIMITED` (`retryAfter: 30`).
+- 초과하면 `429 RATE_LIMITED` + `Retry-After` 헤더 + `error.retryAfter`(초).
+- 앞단에 프록시를 두면 `TRUST_PROXY`(홉 수)를 맞춰야 실제 IP로 센다. 안 맞추면 모두가 프록시 IP 하나로 보인다.
 
 ## 엔진과 연결
 
 ```
-tarball → RepoFile[] → analyze() ─▶ EngineResult ─▶ present.ts ─▶ 위 응답들
-                                      │
-                                      └─ ambiguous[] ─▶ (비동기) LLM 규칙 제안 → 검증 → 규칙 DB
+tarball(메모리) → RepoFile[] → 워커 스레드 analyze() → present.ts → MySQL → 위 응답들
+                                       │
+                                       ├─ endpoints[] ─▶ endpoints / analysis_endpoints
+                                       └─ ambiguous[] ─▶ (예정) LLM 분류 → clue_classifications
+                                                          (예정) 규칙 제안 → 검증 → learned_rules
 ```
 
-- 결과 캐시 키에 `rulesetVersion`을 넣는다. 학습 규칙이 늘면 같은 커밋도 다시 돌리지만, 이건 규칙만 돌리는 것이라 LLM 비용이 없다.
+## 저장 (MySQL 8.4, `src/server/db/migrations.ts`)
+
+| 테이블 | 키 | 범위 | 용도 |
+|---|---|---|---|
+| `analyses` | 저장소 + 커밋 + `ruleset_version` | 저장소별 | 분석 결과 캐시. 같은 커밋이면 파싱·LLM 0회 |
+| `clue_classifications` | 정규화한 단서 (`npm:openai`, `host:api.resend.com`) | 모든 저장소 공유 | LLM 판정 캐시. 토큰을 실제로 줄이는 곳 |
+| `endpoints` | 공급자 + host + 경로 | 모든 저장소 공유 | 엔드포인트 → 상태 페이지 컴포넌트 (장애 점검은 여기만 본다, LLM 불필요) |
+| `analysis_endpoints` | 분석 + 엔드포인트 + 파일·줄 | 저장소별 | 어느 파일이 그 엔드포인트를 쓰는지 |
+| `learned_rules` | 규칙 id | 모든 저장소 공유 | 검증을 통과한 학습 규칙. 다음 분석부터 LLM 없이 처리 |
+
+- `ruleset_version`은 내장 규칙 + 학습 규칙 + `ENGINE_VERSION`의 해시다. 규칙이 늘거나 엔진 로직을 바꾸면 같은 커밋도 다시 분석한다 (규칙만 돌리는 것이라 LLM 비용은 없다).
+- 서버가 분석 도중 꺼지면, 시작할 때 `running`으로 남은 분석을 실패로 바꾼다. 같은 저장소가 서버를 반복해서 죽이는 일을 막으려고 자동으로 다시 돌리지 않는다.
+- `endpoints`는 지금 host로 판정한 근거(직접 HTTP 호출, URL, 설정 값)만 채운다. SDK 호출(`stripe.paymentIntents.create`)을 엔드포인트·컴포넌트로 잇는 표는 아직 없다.
 - LLM 규칙 학습은 분석 응답을 막지 않는다. 사용자는 규칙 결과를 바로 보고, 학습된 규칙은 다음 분석부터 반영된다.
 
 ## 디자인과 맞춰볼 것
