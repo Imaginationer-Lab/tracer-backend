@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:all": "node scripts/test-all.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.6.0",

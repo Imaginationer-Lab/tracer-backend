@@ -1,0 +1,7 @@
+# 내부 테스트 전용 (scripts/test-all.mjs가 별도 프로젝트 이름으로 쓴다).
+# 개발용 스택과 포트·DB 볼륨을 나눠서, 개발 서버가 떠 있어도 같이 돌릴 수 있다.
+
+services:
+  api:
+    # 호스트 포트를 열지 않는다. newman은 compose 네트워크 안에서 http://api:3000 으로 붙는다
+    ports: !reset []
