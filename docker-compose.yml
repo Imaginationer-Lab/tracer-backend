@@ -4,7 +4,7 @@ name: outage-map
 # docker compose --profile test run --rm --build test  엔진·서버 단위 테스트
 # docker compose --profile test run --rm newman        Postman 컬렉션 (api가 떠 있어야 함)
 #
-# 실제 DB(kangdora MySQL 등)를 쓰려면 .env에 DATABASE_URL을 넣는다 (docs/deploy.md)
+# 다른 Postgres(Supabase 등)를 쓰려면 .env에 DATABASE_URL을 넣는다 (docs/deploy.md)
 
 services:
   api:
@@ -18,7 +18,7 @@ services:
         required: false
     environment:
       PORT: "3000"
-      DATABASE_URL: ${DATABASE_URL:-mysql://outage:${MYSQL_PASSWORD:-outage-local-only}@db:3306/outage_map}
+      DATABASE_URL: ${DATABASE_URL:-postgres://outage:${POSTGRES_PASSWORD:-outage-local-only}@db:5432/outage_map}
     depends_on:
       db:
         condition: service_healthy
@@ -30,18 +30,19 @@ services:
       timeout: 3s
       retries: 20
 
-  # 로컬 개발용 MySQL. kangdora와 같은 8.4
+  # 이 서비스 전용 Postgres. 포트를 밖에 열지 않는다 (compose 네트워크 안에서만 api가 붙음)
   db:
-    image: mysql:8.4
+    image: postgres:19-alpine
     environment:
-      MYSQL_DATABASE: outage_map
-      MYSQL_USER: outage
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-outage-local-only}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root-local-only}
+      POSTGRES_DB: outage_map
+      POSTGRES_USER: outage
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-outage-local-only}
     volumes:
-      - db-data:/var/lib/mysql
+      # Postgres 18부터 데이터 경로가 /var/lib/postgresql/<버전>/docker 로 바뀌어서 상위 폴더를 붙인다
+      - pg-data:/var/lib/postgresql
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u outage -p$$MYSQL_PASSWORD --silent"]
+      test: ["CMD-SHELL", "pg_isready -U outage -d outage_map"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -63,4 +64,4 @@ services:
     command: ["run", "outage-map.postman_collection.json", "-e", "local.postman_environment.json", "--env-var", "baseUrl=http://api:3000"]
 
 volumes:
-  db-data:
+  pg-data:
