@@ -1,9 +1,66 @@
 name: outage-map
 
+# docker compose up -d --build                        api + db
+# docker compose --profile test run --rm --build test  엔진·서버 단위 테스트
+# docker compose --profile test run --rm newman        Postman 컬렉션 (api가 떠 있어야 함)
+#
+# 실제 DB(kangdora MySQL 등)를 쓰려면 .env에 DATABASE_URL을 넣는다 (docs/deploy.md)
+
 services:
-  # docker compose --profile test run --rm --build test
+  api:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL:-mysql://outage:${MYSQL_PASSWORD:-outage-local-only}@db:3306/outage_map}
+    depends_on:
+      db:
+        condition: service_healthy
+    # 무상태 서버라 죽어도 다시 띄우면 복구된다
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # 로컬 개발용 MySQL. kangdora와 같은 8.4
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: outage_map
+      MYSQL_USER: outage
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-outage-local-only}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root-local-only}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u outage -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   test:
     build:
       context: .
       target: test
     profiles: ["test"]
+
+  newman:
+    image: postman/newman:6-alpine
+    profiles: ["test"]
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./postman:/etc/newman:ro
+    command: ["run", "outage-map.postman_collection.json", "-e", "local.postman_environment.json", "--env-var", "baseUrl=http://api:3000"]
+
+volumes:
+  db-data:
