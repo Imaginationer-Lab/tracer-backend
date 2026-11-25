@@ -1,11 +1,11 @@
 import { Controller, Get, Inject } from '@nestjs/common';
-import type { Pool } from 'mysql2/promise';
+import pg from 'pg';
 import { DB_POOL } from './db/database.module.js';
 import { ApiException } from './errors.js';
 
 @Controller('health')
 export class HealthController {
-  constructor(@Inject(DB_POOL) private readonly pool: Pool) {}
+  constructor(@Inject(DB_POOL) private readonly pool: pg.Pool) {}
 
   @Get()
   async check(): Promise<{ status: 'ok'; db: 'ok' }> {
