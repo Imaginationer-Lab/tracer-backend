@@ -14,6 +14,7 @@ export const ERRORS: Record<ErrorCode, { status: number; message: string; retrya
   STATUS_NOT_SUPPORTED: { status: 404, message: '이 공급자는 실시간 상태 연동 전이에요.', retryable: false },
   STATUS_UNAVAILABLE: { status: 502, message: '공급자 상태를 확인하지 못했어요.', retryable: true },
   DEMO_EVENT_INVALID: { status: 500, message: '데모 이벤트를 불러오지 못했어요.', retryable: false },
+  ORIGIN_NOT_ALLOWED: { status: 403, message: '허용되지 않은 출처에서 온 요청이에요.', retryable: false },
   BAD_REQUEST: { status: 400, message: '요청 형식이 올바르지 않아요.', retryable: false },
   NOT_FOUND: { status: 404, message: '없는 경로예요.', retryable: false },
   INTERNAL_ERROR: { status: 500, message: '서버에서 문제가 생겼어요.', retryable: true },
