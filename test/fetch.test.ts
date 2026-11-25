@@ -109,7 +109,8 @@ describe('받은 파일을 엔진에 넘기기', () => {
       { path: 'src/pay.ts', content: "import Stripe from 'stripe';\nconst s = new Stripe(process.env.STRIPE_KEY!);\ns.charges.create({});" },
     ]);
     expect(r.files.find((f) => f.path === 'src/huge.ts')).toMatchObject({ state: 'skipped', reason: 'too-large' });
-    expect(r.evidence.some((e) => e.provider === 'stripe' && e.path === 'src/pay.ts')).toBe(true);
+    expect(r.files.find((f) => f.path === 'src/pay.ts')).toMatchObject({ state: 'analyzed' });
+    expect(r.ambiguous.some((a) => a.kind === 'dependency' && a.name === 'stripe')).toBe(true);
   });
 
   it('tarball을 스트림으로 받아 풀고, 받는 도중 오류는 그대로 올린다', async () => {

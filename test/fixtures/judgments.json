@@ -1,0 +1,22 @@
+{
+  "host|*.supabase.co": { "verdict": "service", "service": { "id": "supabase", "name": "Supabase", "category": "database", "role": "데이터베이스" }, "keywords": ["supabase"] },
+  "host|xyzcompany.supabase.co": { "verdict": "service", "service": { "id": "supabase", "name": "Supabase", "category": "database", "role": "데이터베이스" }, "keywords": ["supabase"] },
+  "host|abcd.supabase.co": { "verdict": "service", "service": { "id": "supabase", "name": "Supabase", "category": "database", "role": "데이터베이스" }, "keywords": ["supabase"] },
+  "dep|npm|@supabase/supabase-js": { "verdict": "service", "service": { "id": "supabase", "name": "Supabase", "category": "database", "role": "데이터베이스" }, "keywords": ["supabase"] },
+  "host|api.stripe.com": { "verdict": "service", "service": { "id": "stripe", "name": "Stripe", "category": "payment", "role": "결제" }, "keywords": ["stripe"] },
+  "dep|npm|stripe": { "verdict": "service", "service": { "id": "stripe", "name": "Stripe", "category": "payment", "role": "결제" }, "keywords": ["stripe"] },
+  "dep|pypi|stripe": { "verdict": "service", "service": { "id": "stripe", "name": "Stripe", "category": "payment", "role": "결제" }, "imports": ["stripe"], "keywords": ["stripe"] },
+  "dep|maven|com.stripe:stripe-java": { "verdict": "service", "service": { "id": "stripe", "name": "Stripe", "category": "payment", "role": "결제" }, "imports": ["com.stripe"], "keywords": ["stripe"] },
+  "dep|nuget|stripe.net": { "verdict": "service", "service": { "id": "stripe", "name": "Stripe", "category": "payment", "role": "결제" }, "imports": ["Stripe"], "types": ["*Service"], "keywords": ["stripe"] },
+  "dep|npm|@aws-sdk/client-s3": { "verdict": "service", "service": { "id": "aws-s3", "name": "Amazon S3", "category": "storage", "role": "파일 업로드" } },
+  "dep|maven|software.amazon.awssdk:s3": { "verdict": "service", "service": { "id": "aws-s3", "name": "Amazon S3", "category": "storage", "role": "파일 업로드" }, "imports": ["software.amazon.awssdk.services.s3"], "types": ["S3Client"] },
+  "dep|nuget|awssdk.s3": { "verdict": "service", "service": { "id": "aws-s3", "name": "Amazon S3", "category": "storage", "role": "파일 업로드" }, "imports": ["Amazon.S3"], "types": ["IAmazonS3", "AmazonS3Client", "TransferUtility"] },
+  "dep|pypi|boto3": { "verdict": "service", "service": { "id": "aws", "name": "Amazon Web Services", "category": "storage", "role": "파일 저장" }, "imports": ["boto3"] },
+  "host|api.tosspayments.com": { "verdict": "service", "service": { "id": "toss-payments", "name": "Toss Payments", "category": "payment", "role": "결제" }, "keywords": ["toss"] },
+  "host|api.shipping-partner.kr": { "verdict": "service", "service": { "id": "shipping-partner", "name": "Shipping Partner API", "category": "other", "role": "배송 조회" } },
+  "http|typescript|fetch(`${SHIPPING_BASE}/quotes?zip=${zip}`)|설정 SHIPPING_API_URL (값 없음)": { "verdict": "service", "service": { "id": "shipping-partner", "name": "Shipping Partner API", "category": "other", "role": "배송 조회" } },
+  "dep|npm|twilio": { "verdict": "service", "service": { "id": "twilio", "name": "Twilio", "category": "messaging", "role": "문자 발송" }, "keywords": ["twilio"] },
+  "dep|pypi|sendgrid": { "verdict": "service", "service": { "id": "sendgrid", "name": "SendGrid", "category": "messaging", "role": "메일 발송" }, "imports": ["sendgrid"] },
+  "dep|nuget|sendgrid": { "verdict": "service", "service": { "id": "sendgrid", "name": "SendGrid", "category": "messaging", "role": "메일 발송" }, "imports": ["SendGrid"], "types": ["SendGridClient"] },
+  "dep|maven|com.acme:legacy-erp-client": { "verdict": "unknown" }
+}
