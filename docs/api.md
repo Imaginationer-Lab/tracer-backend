@@ -9,7 +9,7 @@
 ```
 SCR-001 입력 ── POST /api/analyses ──────────────▶ 202 { id }   (저장소 확인은 여기서 동기로)
 SCR-001 분석 중 ── GET /api/analyses/:id (1초 폴링) ─▶ steps 진행 → status: done
-SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live인 공급자만)
+SCR-002 진입 ── GET /api/providers/:id/status  (statusSupport가 live인 서비스만: Supabase, Toss Payments 등)
 공급자 선택 ── GET /api/analyses/:id/providers/:providerId ─▶ 근거 파일·스니펫·코드 사실
 데모 재현 켜기 ── GET /api/demo-events/current ─▶ { providerId: stripe, httpStatus: 503 }
 대응 가이드 ── 서버 호출 없음 (이벤트 + 코드 사실로 프론트가 문구 조립)
@@ -78,7 +78,7 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
       { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
       { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
       { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "toss-payments", "name": "Toss Payments", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/toss.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "toss-payments", "name": "Toss Payments", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/toss.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" }
     ],
     "otherServices": [],
     "files": [
@@ -114,7 +114,7 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
    - 주소를 못 푼 HTTP 호출처럼 규칙으로 만들 수 없는 판정은 그 위치에 `reason.kind: "llm"` 근거로 붙는다 (문구 `AI 판단 · …`).
 
 - 처음 보는 후보를 판정하지 못하면(AI 키 없음, 호출 실패·시간 초과) 분석은 `DETECTION_UNAVAILABLE`로 실패한다. "탐지 결과 없음"으로 잘못 보이지 않게 하려는 것이다. 실패한 분석은 캐시하지 않아서 다시 요청하면 다시 시도한다.
-- 알려진 서비스(`supabase` · `stripe` · `aws-s3`)는 id·이름·상태 페이지가 고정이다. 상태 API는 Supabase만 붙어 있다.
+- 알려진 서비스(`supabase` · `stripe` · `aws-s3`)는 id·이름·상태 페이지가 고정이다. 상태 연동은 아래 "공개 상태" 참고.
 - 실측 (2026-11-25, kangdora):
 
 | 저장소 | 후보 | AI 판정 시간 | 토큰 (입력 · 출력) | 서비스 | 전체 |
@@ -159,7 +159,15 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
 
 ### `GET /api/providers/:providerId/status`
 
-FEAT-003. 서버가 공급자 공개 상태 API를 대신 불러서 60초 캐시한다 (브라우저 CORS 회피).
+FEAT-003. 서버가 서비스의 공개 상태 API(Statuspage 형식 `/api/v2/status.json`)를 대신 불러서 60초 캐시한다 (브라우저 CORS 회피).
+
+어떤 서비스가 `statusSupport: "live"`인지는 서버가 정한다 (`src/server/providers/`).
+
+1. **서버 목록** (`status-sources.ts`): 공개 상태 API를 직접 확인한 28곳. Supabase, Toss Payments, GitHub, Sentry, OpenAI, Claude(Anthropic), Vercel, Cloudflare, Twilio, SendGrid, Notion, Discord, Expo, Resend, Netlify, MongoDB, Clerk, Linear, Figma, npm, Pusher, Mailgun, Mixpanel, Segment, DigitalOcean, Fly.io, Render, Upstash. AI 판정 id가 같거나 `id-`로 시작하면 맞는다 (`notion-api` → Notion).
+2. **처음 보는 서비스**: 분석이 끝나면 백그라운드에서 Claude가 웹 검색으로 공식 상태 페이지 후보를 찾고, 서버가 직접 확인한 것만 `status_sources`에 저장한다. 못 찾은 것도 저장해서 7일 동안 다시 찾지 않는다. 하루 상한 `STATUS_DISCOVERY_DAILY`(100).
+   - 찾은 주소는 결국 남의 저장소에서 나온 이름으로 찾은 것이라, 서버가 부르기 전에 막는다: https만, IP 주소 대신 도메인만, 사설·루프백·링크로컬 주소로 풀리면 거부, 경로는 `/api/v2/status.json`만, 리다이렉트는 2번까지 같은 검사, 응답 256KB·5초 상한, Statuspage 모양이어야 통과. 상태를 조회할 때마다 같은 검사를 다시 한다.
+- `statusSupport`는 분석 결과를 **읽을 때** 정한다. 분석 직후 `none`이던 서비스도 상태 페이지를 찾으면 다음 조회부터 `live`다.
+- 공개 상태 API가 없는 Stripe·AWS는 `none`이다 (Stripe 상태 페이지는 JSON API가 없고, AWS는 HTML만 있다).
 
 ```json
 { "providerId": "supabase", "indicator": "none", "state": "operational", "description": "All Systems Operational", "fetchedAt": "2026-11-25T01:02:00Z" }
@@ -167,7 +175,7 @@ FEAT-003. 서버가 공급자 공개 상태 API를 대신 불러서 60초 캐시
 
 - Statuspage `status.indicator` → `none: operational` · `minor: degraded` · `major/critical: outage` · `maintenance: maintenance`
 - 조회 실패 → `502 STATUS_UNAVAILABLE` ("상태 확인 불가 · 다시 조회"). 공식 상태를 "정상"으로 대신 채우지 않는다.
-- Supabase 말고는 모두 `statusSupport: "none"`이라 프론트가 호출하지 않고 "실시간 연동 전"을 띄운다.
+- `statusSupport: "none"`인 서비스는 프론트가 호출하지 않고 "실시간 연동 전"을 띄운다.
 
 ### `GET /api/demo-events/current`
 
@@ -197,7 +205,7 @@ FEAT-004. 서버에 들어 있는 재현 데이터 한 건을 검증해서 돌�
 | `ANALYSIS_NOT_READY` | 409 | 아직 분석 중 (상세를 너무 일찍 부름) | 있음 |
 | `PROVIDER_NOT_FOUND` | 404 | 이 분석 결과에 없는 서비스 id | - |
 | `DETECTION_UNAVAILABLE` | 503 | 외부 서비스를 판단하지 못함 (AI 키 없음, AI 호출 실패) | "외부 서비스를 판단하지 못했어요" + 다시 시도 |
-| `STATUS_NOT_SUPPORTED` | 404 | 실시간 연동 전 (`statusSupport: none`인 공급자) | - |
+| `STATUS_NOT_SUPPORTED` | 404 | 실시간 연동 전 (`statusSupport: none`인 서비스) | - |
 | `STATUS_UNAVAILABLE` | 502 | 상태 확인 불가 · 다시 조회 | 있음 |
 | `DEMO_EVENT_INVALID` | 500 | 데모 이벤트를 불러오지 못했어요 | 재현 끄기 |
 | `ORIGIN_NOT_ALLOWED` | 403 | (프론트가 아닌 사이트에서 브라우저로 호출) | - |
