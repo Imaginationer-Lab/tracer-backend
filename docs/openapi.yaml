@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     공개 GitHub 저장소가 쓰는 외부 서비스(Supabase·Stripe·Amazon S3)와 호출 위치를 찾는다.
-    브라우저 호출은 http://localhost:9100 (CORS_ORIGINS)에서만 허용된다. 인증 없음.
+    브라우저 호출은 http://localhost:9000 (CORS_ORIGINS)에서만 허용된다. 인증 없음.
     사람용 설명은 docs/frontend-handoff.md, docs/api.md.
 # 인증 없음 (로그인·세션 없는 공개 서비스)
 security: []
@@ -172,11 +172,12 @@ components:
 
     ProviderSummary:
       type: object
-      required: [id, name, role, fileCount, files, usage, statusSupport]
+      required: [id, name, role, category, fileCount, files, usage, statusSupport]
       properties:
         id: { $ref: '#/components/schemas/ProviderId' }
         name: { type: string }
-        role: { type: string, examples: [로그인, 결제, 파일 업로드] }
+        role: { type: string, description: 화면용 한국어 라벨, examples: [로그인, 결제, 파일 업로드] }
+        category: { type: string, enum: [auth, payment, storage, database], description: 기계용 분류 }
         fileCount: { type: integer }
         files:
           type: array

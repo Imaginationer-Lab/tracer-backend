@@ -50,24 +50,24 @@ describe('RateLimiter', () => {
 });
 
 describe('CORS', () => {
-  it('기본값은 프론트(localhost:9100)만 허용', () => {
+  it('기본값은 프론트(localhost:9000)만 허용', () => {
     const { corsOrigins } = loadConfig({ DATABASE_URL: 'postgres://x' });
-    expect(corsOrigins).toEqual(['http://localhost:9100', 'http://127.0.0.1:9100']);
-    expect(isOriginAllowed('http://localhost:9100', corsOrigins)).toBe(true);
+    expect(corsOrigins).toEqual(['http://localhost:9000', 'http://127.0.0.1:9000']);
+    expect(isOriginAllowed('http://localhost:9000', corsOrigins)).toBe(true);
     expect(isOriginAllowed('http://localhost:3000', corsOrigins)).toBe(false);
     expect(isOriginAllowed('https://evil.example', corsOrigins)).toBe(false);
   });
 
   it('Origin이 없는 요청(curl, Postman, 헬스체크)은 통과', () => {
-    expect(isOriginAllowed(undefined, ['http://localhost:9100'])).toBe(true);
+    expect(isOriginAllowed(undefined, ['http://localhost:9000'])).toBe(true);
   });
 
   it('CORS_ORIGINS로 바꿀 수 있고, 형식이 틀리면 시작하지 않는다', () => {
-    expect(loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'https://outage.example.com/, http://localhost:9100' }).corsOrigins).toEqual([
+    expect(loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'https://outage.example.com/, http://localhost:9000' }).corsOrigins).toEqual([
       'https://outage.example.com',
-      'http://localhost:9100',
+      'http://localhost:9000',
     ]);
-    expect(() => loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'localhost:9100' })).toThrow(/CORS_ORIGINS/);
+    expect(() => loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'localhost:9000' })).toThrow(/CORS_ORIGINS/);
   });
 });
 

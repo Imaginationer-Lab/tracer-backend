@@ -69,9 +69,9 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
   "error": null,
   "result": {
     "providers": [
-      { "id": "supabase", "name": "Supabase", "role": "로그인", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
-      { "id": "stripe", "name": "Stripe", "role": "결제", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 3 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
+      { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 3 } ], "usage": "used", "statusSupport": "none" }
     ],
     "files": [
       { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
@@ -171,7 +171,7 @@ GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 40
 
 ## 브라우저 호출 출처 (CORS)
 
-- 브라우저에서 API를 부를 수 있는 곳은 프론트뿐이다. 기본값 `http://localhost:9100` (`127.0.0.1:9100` 포함), `CORS_ORIGINS`(쉼표로 구분)로 바꾼다.
+- 브라우저에서 API를 부를 수 있는 곳은 프론트뿐이다. 기본값 `http://localhost:9000` (`127.0.0.1:9000` 포함), `CORS_ORIGINS`(쉼표로 구분)로 바꾼다.
 - 허용 출처에는 CORS 헤더를 붙인다: `GET`·`POST`, `Content-Type`, `Retry-After` 노출, 프리플라이트 캐시 600초.
 - 다른 출처에서 온 요청(`Origin` 헤더가 있고 목록에 없음)은 프리플라이트를 포함해 `403 ORIGIN_NOT_ALLOWED`로 막는다. 다른 사이트가 방문자의 브라우저로 분석을 돌리지 못하게 하기 위해서다.
 - `Origin` 헤더가 없는 요청(curl, Postman, 서버 간 호출, 헬스체크)은 브라우저의 교차 출처 요청이 아니므로 통과한다. CORS는 브라우저 규칙이라, 이런 요청까지 막으려면 인증이나 네트워크 제한이 따로 필요하다.

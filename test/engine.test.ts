@@ -18,10 +18,10 @@ const lines = (es: Evidence[], kind?: Evidence['kind']) => es.filter((e) => !kin
 describe('TS 쇼핑몰 (디자인 예제)', () => {
   it('세 공급자를 찾고 역할을 붙인다', async () => {
     const result = toAnalysisResult(await run('ts-shop'));
-    expect(result.providers.map((p) => [p.id, p.role, p.usage])).toEqual([
-      ['supabase', '로그인', 'used'],
-      ['stripe', '결제', 'used'],
-      ['aws-s3', '파일 업로드', 'used'],
+    expect(result.providers.map((p) => [p.id, p.role, p.category, p.usage])).toEqual([
+      ['supabase', '로그인', 'auth', 'used'],
+      ['stripe', '결제', 'payment', 'used'],
+      ['aws-s3', '파일 업로드', 'storage', 'used'],
     ]);
   });
 

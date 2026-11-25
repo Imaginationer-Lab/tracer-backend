@@ -17,7 +17,7 @@ npm run test:all                                     # 내부 테스트 전체 (
 - 따로 돌릴 때: `docker compose --profile test run --rm --build test`(단위), `docker compose --profile test run --rm newman`(개발 스택에 Postman)
 - GitHub Actions 같은 CI에는 올리지 않는다 (내부 테스트로만 쓴다).
 
-프론트는 `http://localhost:9100`에서 `http://localhost:3000/api/...`를 부른다. 다른 출처의 브라우저 호출은 403이다 (`CORS_ORIGINS`).
+프론트는 `http://localhost:9000`에서 `http://localhost:3000/api/...`를 부른다. 다른 출처의 브라우저 호출은 403이다 (`CORS_ORIGINS`).
 
 - Postman 앱에서는 `postman/outage-map.postman_collection.json`과 `postman/local.postman_environment.json`을 가져와서 Collection Runner로 순서대로 돌린다. "분석 상태" 요청은 끝날 때까지 스스로 반복한다.
 - GitHub 토큰이 없으면 IP당 시간당 60회(분석 1회에 3회)라서 금방 막힌다. `.env`에 `GITHUB_TOKEN`을 넣는다 (`.env.example` 참고). 토큰에는 아무 권한도 주지 않아도 된다 (공개 저장소만 읽는다).
@@ -64,6 +64,6 @@ DATABASE_URL=postgres://<user>:<password>@<host>:5432/postgres
 | `ANALYSIS_TIMEOUT_SECONDS` | 120 | 분석 한 건 시간 상한 |
 | `RATE_LIMIT_BURST` · `RATE_LIMIT_REFILL_SECONDS` | 3 · 60 | IP별 새 분석 요청 제한 |
 | `TRUST_PROXY` | false | 앞단 프록시 홉 수 (`1` 등) |
-| `CORS_ORIGINS` | `http://localhost:9100,http://127.0.0.1:9100` | 브라우저 호출을 허용할 프론트 출처 (쉼표로 구분) |
+| `CORS_ORIGINS` | `http://localhost:9000,http://127.0.0.1:9000` | 브라우저 호출을 허용할 프론트 출처 (쉼표로 구분) |
 | `MAX_TARBALL_MB` · `MAX_REPO_FILES` | 50 · 20000 | 저장소 크기 상한 |
 | `DEMO_EVENT_FILE` | `data/demo-event.json` | 데모 재현 이벤트 |

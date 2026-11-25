@@ -19,7 +19,7 @@ export interface AppConfig {
   corsOrigins: string[];
 }
 
-const DEFAULT_CORS_ORIGINS = ['http://localhost:9100', 'http://127.0.0.1:9100'];
+const DEFAULT_CORS_ORIGINS = ['http://localhost:9000', 'http://127.0.0.1:9000'];
 
 function corsOrigins(raw: string | undefined): string[] {
   if (!raw) return DEFAULT_CORS_ORIGINS;
