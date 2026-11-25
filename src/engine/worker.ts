@@ -4,15 +4,17 @@
 import { toAnalysisResult, toProviderDetail } from '../api/present.js';
 import type { AnalysisResult, ProviderDetail, ProviderId } from '../api/contract.js';
 import { analyze } from './analyze.js';
-import { applyClassifications, otherServices, type Classification } from './learn.js';
-import { PROVIDER_IDS, type Rule } from './rules.js';
+import { applyDirect, type DetectionPlan } from './learn.js';
+import type { Rule, ServiceInfo } from './rules.js';
 import type { AmbiguousItem, Location, RepoFile } from './types.js';
 
 export interface WorkerInput {
   files: RepoFile[];
+  /** AI 판정에서 만든 이번 분석의 규칙. 없으면 후보만 모은다 */
   rules?: Rule[];
-  /** LLM 판정. 있으면 공급자 근거('llm')와 기타 서비스에 반영한다 */
-  classifications?: Classification[];
+  /** 서비스 이름·분류·역할 (AI 판정 + 알려진 서비스) */
+  services?: ServiceInfo[];
+  direct?: DetectionPlan['direct'];
 }
 
 /** 저장소가 쓰는 공급자 엔드포인트 (host로 판정한 것만) */
@@ -31,12 +33,12 @@ export interface WorkerOutput {
   stats: { parsedFiles: number; sourceChars: number; rulesetVersion: string };
 }
 
-export default async function run({ files, rules, classifications }: WorkerInput): Promise<WorkerOutput> {
-  const raw = await analyze(files, rules ? { rules } : {});
-  const r = classifications?.length ? applyClassifications(raw, classifications) : raw;
-  const result = toAnalysisResult(r, classifications?.length ? otherServices(r.ambiguous, classifications) : []);
+export default async function run({ files, rules, services, direct }: WorkerInput): Promise<WorkerOutput> {
+  const r = applyDirect(await analyze(files, rules ? { rules } : {}), direct ?? []);
+  const directory = new Map((services ?? []).map((s) => [s.id, s]));
+  const result = toAnalysisResult(r, directory);
   const details: WorkerOutput['details'] = {};
-  for (const id of PROVIDER_IDS) if (result.providers.some((p) => p.id === id)) details[id] = toProviderDetail(r, id);
+  for (const p of result.providers) details[p.id] = toProviderDetail(r, p.id, directory);
 
   const endpoints = new Map<string, EndpointUse>();
   for (const e of r.evidence) {
