@@ -8,6 +8,7 @@ import { AnalysisRepository } from './db/analysis.repository.js';
 import { DatabaseModule } from './db/database.module.js';
 import { DemoController } from './demo/demo.controller.js';
 import { GitHubClient } from './github/github.client.js';
+import { RepoLoader } from './github/repo-loader.js';
 import { HealthController } from './health.controller.js';
 import { ClueClassifier } from './llm/clue-classifier.js';
 import { ProvidersController } from './providers/providers.controller.js';
@@ -16,6 +17,6 @@ import { StatusService } from './providers/status.service.js';
 @Module({
   imports: [ConfigModule, DatabaseModule],
   controllers: [AnalysesController, ProvidersController, DemoController, HealthController],
-  providers: [AnalysisRepository, AnalysesService, ClueClassifier, EnginePool, GitHubClient, RateLimiter, StatusService],
+  providers: [AnalysisRepository, AnalysesService, ClueClassifier, EnginePool, GitHubClient, RateLimiter, RepoLoader, StatusService],
 })
 export class AppModule {}

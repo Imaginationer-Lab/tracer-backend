@@ -1,9 +1,8 @@
 // 엔진 결과 → HTTP 응답 모양 (docs/api.md)
 
-import { categoryOf, PROVIDER_IDS, PROVIDERS } from '../engine/rules.js';
+import { categoryOf, FEATURED_ORDER, KNOWN_SERVICES, type ServiceInfo } from '../engine/rules.js';
 import type { EngineResult, Evidence } from '../engine/types.js';
-import type { OtherService } from '../engine/learn.js';
-import type { AnalysisResult, EvidenceItem, FileEntry, OtherServiceSummary, ProviderDetail, ProviderId, ProviderSummary } from './contract.js';
+import type { AnalysisResult, EvidenceItem, FileEntry, ProviderDetail, ProviderId, ProviderSummary } from './contract.js';
 
 const PRIORITY: Record<Evidence['kind'], number> = {
   call: 9,
@@ -41,35 +40,54 @@ function evidenceFor(r: EngineResult, provider: ProviderId) {
   return { used, list: used ? all.filter((e) => !DECLARATIVE.has(e.kind)) : all };
 }
 
-export function toAnalysisResult(r: EngineResult, others: OtherService[] = []): AnalysisResult {
+export type ServiceDirectory = Map<ProviderId, ServiceInfo>;
+
+/** 판정에 없는 id면 (예전 결과 등) 알려진 서비스, 그것도 아니면 id 그대로 */
+export function serviceInfo(id: ProviderId, directory: ServiceDirectory): ServiceInfo {
+  const known = KNOWN_SERVICES[id];
+  return directory.get(id) ?? (known ? { ...known } : { id, name: id, category: 'other', role: '외부 서비스', statusPageUrl: null });
+}
+
+const featured = (id: string) => {
+  const i = FEATURED_ORDER.indexOf(id);
+  return i < 0 ? FEATURED_ORDER.length : i;
+};
+
+export function toAnalysisResult(r: EngineResult, directory: ServiceDirectory = new Map()): AnalysisResult {
+  const ids = [...new Set(r.evidence.map((e) => e.provider))];
   const providers: ProviderSummary[] = [];
-  for (const id of PROVIDER_IDS) {
+  for (const id of ids) {
     const { used, list } = evidenceFor(r, id);
     if (!list.length) continue;
+    const info = serviceInfo(id, directory);
     const roles = new Map<string, number>();
     for (const e of list) if (e.role) roles.set(e.role, (roles.get(e.role) ?? 0) + 1);
-    const role = [...roles].sort((a, b) => b[1] - a[1])[0]?.[0] ?? PROVIDERS[id].defaultRole;
+    const role = [...roles].sort((a, b) => b[1] - a[1])[0]?.[0] ?? info.role;
     const files = [...bestByFile(list).values()]
       .sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.path.localeCompare(b.path))
       .map((e) => ({ path: e.path, line: e.line }));
     providers.push({
       id,
-      name: PROVIDERS[id].name,
+      name: info.name,
       role,
-      category: categoryOf(id, role),
+      category: categoryOf(info, role),
       fileCount: files.length,
       files,
       usage: used ? 'used' : 'declared-only',
-      statusSupport: PROVIDERS[id].statusApi ? 'live' : 'none',
+      statusSupport: info.statusApi ? 'live' : 'none',
     });
   }
+  // 디자인의 세 서비스 → 근거 파일이 많은 순 → 이름순
+  providers.sort((a, b) => featured(a.id) - featured(b.id) || b.fileCount - a.fileCount || a.name.localeCompare(b.name));
+  const order = new Map(providers.map((p, i) => [p.id, i]));
 
   const matches = new Map<string, { provider: ProviderId; line: number }[]>();
-  for (const id of PROVIDER_IDS) {
-    for (const [path, e] of bestByFile(evidenceFor(r, id).list)) {
-      matches.set(path, [...(matches.get(path) ?? []), { provider: id, line: e.line }]);
+  for (const p of providers) {
+    for (const [path, e] of bestByFile(evidenceFor(r, p.id).list)) {
+      matches.set(path, [...(matches.get(path) ?? []), { provider: p.id, line: e.line }]);
     }
   }
+  for (const list of matches.values()) list.sort((a, b) => order.get(a.provider)! - order.get(b.provider)!);
 
   let statuses = r.files;
   if (statuses.length > MAX_PATHS) statuses = statuses.filter((f) => f.state !== 'other');
@@ -81,13 +99,11 @@ export function toAnalysisResult(r: EngineResult, others: OtherService[] = []): 
         : { path: f.path, state: 'other' },
   );
 
-  const otherServices: OtherServiceSummary[] = others.map((o) => ({ name: o.name, clues: o.clues, fileCount: new Set(o.files.map((f) => f.path)).size, files: o.files }));
-
-  return { providers, otherServices, files, summary: { analyzed: r.stats.analyzed, skipped: r.stats.skipped } };
+  return { providers, otherServices: [], files, summary: { analyzed: r.stats.analyzed, skipped: r.stats.skipped } };
 }
 
-export function toProviderDetail(r: EngineResult, provider: ProviderId): ProviderDetail {
-  const info = PROVIDERS[provider];
+export function toProviderDetail(r: EngineResult, provider: ProviderId, directory: ServiceDirectory = new Map()): ProviderDetail {
+  const info = serviceInfo(provider, directory);
   const best = [...bestByFile(evidenceFor(r, provider).list).values()].sort(
     (a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.path.localeCompare(b.path),
   );

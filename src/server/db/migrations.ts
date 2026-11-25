@@ -67,4 +67,9 @@ export const MIGRATIONS: { id: string; sql: string[] }[] = [
       )`,
     ],
   },
+  {
+    // AI가 외부 서비스를 모두 판정하면서 판정 전체(서비스 id·이름·분류·역할·import 모듈 등)를 저장한다
+    id: '002_clue_judgment',
+    sql: [`ALTER TABLE clue_classifications ADD COLUMN judgment jsonb`],
+  },
 ];

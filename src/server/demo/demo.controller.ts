@@ -3,8 +3,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { Controller, Get, Inject } from '@nestjs/common';
-import type { DemoEvent, ProviderId } from '../../api/contract.js';
-import { PROVIDER_IDS } from '../../engine/rules.js';
+import type { DemoEvent } from '../../api/contract.js';
+import { SERVICE_ID } from '../../engine/rules.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
 import { ApiException } from '../errors.js';
 
@@ -16,7 +16,8 @@ export function parseDemoEvent(raw: string): DemoEvent {
     throw new ApiException('DEMO_EVENT_INVALID');
   }
   const ok =
-    PROVIDER_IDS.includes(v.providerId as ProviderId) &&
+    typeof v.providerId === 'string' &&
+    SERVICE_ID.test(v.providerId) &&
     typeof v.title === 'string' &&
     v.title.length > 0 &&
     Number.isInteger(v.httpStatus) &&

@@ -111,7 +111,7 @@ describe('parseDemoEvent', () => {
   });
 
   it('형식이 틀리면 DEMO_EVENT_INVALID', () => {
-    for (const bad of ['not json', '{}', '{"providerId":"paypal","title":"x","httpStatus":503,"occurredAt":"2026-11-25T01:00:00Z"}', '{"providerId":"stripe","title":"x","httpStatus":999,"occurredAt":"2026-11-25T01:00:00Z"}']) {
+    for (const bad of ['not json', '{}', '{"providerId":"Pay Pal!","title":"x","httpStatus":503,"occurredAt":"2026-11-25T01:00:00Z"}', '{"providerId":"stripe","title":"x","httpStatus":999,"occurredAt":"2026-11-25T01:00:00Z"}']) {
       expect(code(() => parseDemoEvent(bad))).toBe('DEMO_EVENT_INVALID');
     }
   });

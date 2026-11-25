@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import type { Ecosystem, Lang, ProviderCategory, ProviderId } from './types.js';
 
 // ─── 규칙 스키마 ──────────────────────────────────────────────────────────────
-// 규칙은 DB에 JSON으로 저장할 수 있는 데이터다. 엔진이 해석만 하고 실행하지 않는다.
-// 모든 문자열 패턴은 '*' 글롭이다 (glob.ts).
+// 내장 규칙은 없다. 규칙은 분석할 때마다 AI 판정(learn.ts)에서 만들어지는 데이터다:
+//   "이 의존성·호스트는 Stripe다" → dependency·import·host 규칙 → 엔진이 줄 번호·호출 추적·코드 사실을 찾는다.
+// 엔진은 규칙을 해석만 하고 실행하지 않는다. 모든 문자열 패턴은 '*' 글롭이다 (glob.ts).
 
 export type RuleMatch =
   /** 매니페스트 의존성. maven은 'groupId:artifactId' */
@@ -36,14 +37,15 @@ export interface Rule {
 
 const LANGS: Lang[] = ['typescript', 'tsx', 'javascript', 'python', 'java', 'csharp'];
 const ECOSYSTEMS: Ecosystem[] = ['npm', 'pypi', 'maven', 'nuget'];
-export const PROVIDER_IDS: ProviderId[] = ['supabase', 'stripe', 'aws-s3'];
+/** 서비스 id 모양 (URL 경로에 그대로 쓴다) */
+export const SERVICE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 /** DB나 LLM에서 온 규칙을 받기 전에 모양을 검사한다. 너무 넓은 패턴도 여기서 거른다. */
 export function validateRule(value: unknown): { ok: true; rule: Rule } | { ok: false; error: string } {
   const r = value as Partial<Rule> | null;
   if (!r || typeof r !== 'object') return { ok: false, error: 'not an object' };
   if (typeof r.id !== 'string' || !/^[\w:.\-/@*]{1,120}$/.test(r.id)) return { ok: false, error: 'bad id' };
-  if (!PROVIDER_IDS.includes(r.provider as ProviderId)) return { ok: false, error: 'unknown provider' };
+  if (typeof r.provider !== 'string' || !SERVICE_ID.test(r.provider)) return { ok: false, error: 'bad provider id' };
   if (r.langs && (!Array.isArray(r.langs) || r.langs.some((l) => !LANGS.includes(l)))) return { ok: false, error: 'bad langs' };
   if (r.source !== 'builtin' && r.source !== 'learned') return { ok: false, error: 'bad source' };
   const m = r.match as RuleMatch | undefined;
@@ -84,39 +86,40 @@ export function validateRule(value: unknown): { ok: true; rule: Rule } | { ok: f
   return { ok: true, rule: r as Rule };
 }
 
-// ─── 공급자 카탈로그 ────────────────────────────────────────────────────────
+// ─── 서비스 정보 ────────────────────────────────────────────────────────────
 
-export interface ProviderInfo {
+export interface ServiceInfo {
   id: ProviderId;
   name: string;
-  defaultRole: RoleLabel;
-  statusPageUrl: string;
+  category: ProviderCategory;
+  /** 화면용 한국어 라벨 */
+  role: string;
+  statusPageUrl: string | null;
   /** 공개 상태 API (Statuspage 형식). 없으면 "실시간 연동 전" */
   statusApi?: string;
-  /** 근거의 호출식·URL 경로로 역할을 더 좁힌다 */
-  roles: { callee?: string; path?: string; role: RoleLabel }[];
+  /** 근거의 호출식·URL 경로로 역할을 더 좁힌다 (알려진 서비스만) */
+  roles?: { callee?: string; path?: string; role: string }[];
 }
 
-/** 화면용 역할 라벨 → 기계용 분류. 새 역할은 여기에 먼저 넣어야 카탈로그에서 쓸 수 있다 (타입으로 강제) */
-export const ROLE_CATEGORY = {
-  로그인: 'auth',
-  결제: 'payment',
-  '파일 업로드': 'storage',
-  '파일 저장': 'storage',
-  데이터베이스: 'database',
-} as const satisfies Record<string, ProviderCategory>;
+export const CATEGORIES: ProviderCategory[] = ['auth', 'payment', 'storage', 'database', 'ai', 'messaging', 'monitoring', 'analytics', 'other'];
 
-export type RoleLabel = keyof typeof ROLE_CATEGORY;
+/** 역할을 좁혔을 때 분류도 따라 바꾼다 (Supabase 데이터베이스 → 로그인이면 auth) */
+const ROLE_CATEGORY: Record<string, ProviderCategory> = { 로그인: 'auth', 결제: 'payment', '파일 업로드': 'storage', '파일 저장': 'storage', 데이터베이스: 'database' };
 
-export function categoryOf(provider: ProviderId, role: string): ProviderCategory {
-  return (ROLE_CATEGORY as Record<string, ProviderCategory>)[role] ?? ROLE_CATEGORY[PROVIDERS[provider].defaultRole];
+export function categoryOf(service: ServiceInfo, role: string): ProviderCategory {
+  return role === service.role ? service.category : (ROLE_CATEGORY[role] ?? service.category);
 }
 
-export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
+/**
+ * 디자인·상태 연동이 있는 서비스. AI 판정이 이 서비스면 id·이름·상태 API를 여기 값으로 맞춘다.
+ * 탐지 규칙이 아니다 (탐지는 AI가 한다).
+ */
+export const KNOWN_SERVICES: Record<string, ServiceInfo & { aliases: string[] }> = {
   supabase: {
     id: 'supabase',
     name: 'Supabase',
-    defaultRole: '데이터베이스',
+    category: 'database',
+    role: '데이터베이스',
     statusPageUrl: 'https://status.supabase.com',
     statusApi: 'https://status.supabase.com/api/v2/status.json',
     roles: [
@@ -125,80 +128,24 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
       { callee: '*.storage.*', role: '파일 저장' },
       { path: '/storage/*', role: '파일 저장' },
     ],
+    aliases: ['supabase'],
   },
-  stripe: {
-    id: 'stripe',
-    name: 'Stripe',
-    defaultRole: '결제',
-    statusPageUrl: 'https://status.stripe.com',
-    roles: [],
-  },
+  stripe: { id: 'stripe', name: 'Stripe', category: 'payment', role: '결제', statusPageUrl: 'https://status.stripe.com', aliases: ['stripe'] },
   'aws-s3': {
     id: 'aws-s3',
     name: 'Amazon S3',
-    defaultRole: '파일 업로드',
+    category: 'storage',
+    role: '파일 업로드',
     statusPageUrl: 'https://health.aws.amazon.com/health/status',
-    roles: [],
+    aliases: ['aws-s3', 'amazon-s3', 's3', 'amazon-simple-storage-service'],
   },
 };
 
-// ─── 내장 규칙 ───────────────────────────────────────────────────────────────
-
-const JS: Lang[] = ['typescript', 'tsx', 'javascript'];
-let seq = 0;
-const rule = (provider: ProviderId, match: RuleMatch, langs?: Lang[]): Rule => ({
-  id: `builtin:${provider}:${match.type}:${++seq}`,
-  provider,
-  match,
-  ...(langs ? { langs } : {}),
-  source: 'builtin',
-});
-
-export const BUILTIN_RULES: Rule[] = [
-  // Stripe
-  rule('stripe', { type: 'dependency', ecosystem: 'npm', name: ['stripe', '@stripe/*'] }),
-  rule('stripe', { type: 'dependency', ecosystem: 'pypi', name: 'stripe' }),
-  rule('stripe', { type: 'dependency', ecosystem: 'maven', name: 'com.stripe:*' }),
-  rule('stripe', { type: 'dependency', ecosystem: 'nuget', name: 'Stripe.net' }),
-  rule('stripe', { type: 'import', module: ['stripe', '@stripe/*'] }, JS),
-  rule('stripe', { type: 'import', module: ['stripe', 'stripe.*'] }, ['python']),
-  rule('stripe', { type: 'import', module: 'com.stripe.*' }, ['java']),
-  rule('stripe', { type: 'import', module: ['Stripe', 'Stripe.*'] }, ['csharp']),
-  // Stripe.net은 `using Stripe;` 뒤에 new PaymentIntentService()처럼 이름만 쓴다
-  rule('stripe', { type: 'call', callee: '*Service', whenImport: ['Stripe', 'Stripe.*'] }, ['csharp']),
-  rule('stripe', { type: 'host', host: ['stripe.com', '*.stripe.com'] }),
-  rule('stripe', { type: 'setting', key: '*stripe*' }),
-
-  // Supabase
-  rule('supabase', { type: 'dependency', ecosystem: 'npm', name: '@supabase/*' }),
-  rule('supabase', { type: 'dependency', ecosystem: 'pypi', name: ['supabase', 'supabase-*'] }),
-  rule('supabase', { type: 'dependency', ecosystem: 'nuget', name: ['Supabase', 'supabase-*'] }),
-  rule('supabase', { type: 'dependency', ecosystem: 'maven', name: 'io.github.jan-tennert.supabase:*' }),
-  rule('supabase', { type: 'import', module: '@supabase/*' }, JS),
-  rule('supabase', { type: 'import', module: ['supabase', 'supabase.*'] }, ['python']),
-  rule('supabase', { type: 'import', module: ['Supabase', 'Supabase.*'] }, ['csharp']),
-  rule('supabase', { type: 'import', module: 'io.github.jan.supabase*' }, ['java']),
-  rule('supabase', { type: 'host', host: ['supabase.co', '*.supabase.co', '*.supabase.in'] }),
-  rule('supabase', { type: 'setting', key: '*supabase*' }),
-
-  // Amazon S3
-  rule('aws-s3', { type: 'dependency', ecosystem: 'npm', name: ['@aws-sdk/client-s3', '@aws-sdk/s3-*', '@aws-sdk/lib-storage'] }),
-  rule('aws-s3', { type: 'dependency', ecosystem: 'maven', name: ['software.amazon.awssdk:s3', 'software.amazon.awssdk:s3-*', 'com.amazonaws:aws-java-sdk-s3'] }),
-  rule('aws-s3', { type: 'dependency', ecosystem: 'nuget', name: 'AWSSDK.S3' }),
-  rule('aws-s3', { type: 'import', module: ['@aws-sdk/client-s3', '@aws-sdk/s3-*', '@aws-sdk/lib-storage'] }, JS),
-  rule('aws-s3', { type: 'call', callee: 'aws-sdk.S3' }, JS),
-  rule('aws-s3', { type: 'import', module: ['software.amazon.awssdk.services.s3*', 'com.amazonaws.services.s3*'] }, ['java']),
-  rule('aws-s3', { type: 'import', module: ['Amazon.S3', 'Amazon.S3.*'] }, ['csharp']),
-  rule('aws-s3', { type: 'call', callee: ['AmazonS3Client', 'TransferUtility'] }, ['csharp']),
-  rule('aws-s3', { type: 'type', name: ['IAmazonS3', 'AmazonS3Client'] }, ['csharp']),
-  // boto3는 AWS 전체 SDK라서 client('s3') 인자로 S3를 구분한다
-  rule('aws-s3', { type: 'call', callee: ['*.client', '*.resource'], arg0: 's3', whenImport: ['boto3', 'boto3.*', 'aioboto3'] }, ['python']),
-  rule('aws-s3', { type: 'host', host: ['s3.amazonaws.com', '*.s3.amazonaws.com', 's3.*.amazonaws.com', '*.s3.*.amazonaws.com', 's3-*.amazonaws.com', '*.s3-*.amazonaws.com'] }),
-  rule('aws-s3', { type: 'setting', key: ['s3', 's3.*', '*.s3', '*.s3.*'] }),
-];
+/** 화면 순서: 디자인의 세 서비스가 먼저 */
+export const FEATURED_ORDER = ['supabase', 'stripe', 'aws-s3'];
 
 /** 엔진 로직(추출·해석)을 바꿔서 같은 규칙으로도 결과가 달라지면 올린다. 분석 캐시 키에 들어간다. */
-export const ENGINE_VERSION = 5;
+export const ENGINE_VERSION = 6;
 
 export function rulesetVersion(rules: Rule[]): string {
   const payload = JSON.stringify([ENGINE_VERSION, rules.map((r) => [r.id, r.provider, r.langs, r.match])]);
@@ -206,7 +153,7 @@ export function rulesetVersion(rules: Rule[]): string {
 }
 
 // ─── 공급자가 아닌 의존성 ───────────────────────────────────────────────────
-// LLM에 "이건 어떤 서비스냐"고 물을 필요가 없는 흔한 라이브러리. 여기서 빠진 것만 애매 후보가 된다.
+// AI에 "이건 어떤 서비스냐"고 물을 필요가 없는 흔한 라이브러리(외부 서비스를 부르지 않음). 비용을 줄이는 거름망이고, 여기서 빠진 것만 후보가 된다.
 
 export const COMMON_DEPENDENCIES: Record<Ecosystem, string[]> = {
   npm: [
@@ -223,7 +170,7 @@ export const COMMON_DEPENDENCIES: Record<Ecosystem, string[]> = {
   pypi: [
     'fastapi', 'uvicorn*', 'gunicorn', 'starlette', 'pydantic*', 'sqlalchemy', 'alembic', 'psycopg*', 'asyncpg', 'pymysql', 'redis',
     'celery', 'django*', 'flask*', 'jinja2', 'python-dotenv', 'python-multipart', 'requests', 'httpx', 'aiohttp', 'urllib3', 'tenacity',
-    'pytest*', 'black', 'ruff', 'mypy', 'isort', 'flake8', 'boto3', 'botocore', 'aioboto3', 'numpy', 'pandas', 'passlib*', 'python-jose*',
+    'pytest*', 'black', 'ruff', 'mypy', 'isort', 'flake8', 'numpy', 'pandas', 'passlib*', 'python-jose*',
     'bcrypt', 'orjson', 'ujson', 'loguru', 'typer', 'click', 'rich',
   ],
   maven: [

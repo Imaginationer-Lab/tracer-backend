@@ -9,6 +9,8 @@ export type Ecosystem = 'npm' | 'pypi' | 'maven' | 'nuget';
 export interface RepoFile {
   path: string;
   content: string;
+  /** 크기 상한을 넘어서 내용을 받지 않았다 (GitHub 트리에서 크기만 보고 판단) */
+  tooLarge?: boolean;
 }
 
 export interface Location {

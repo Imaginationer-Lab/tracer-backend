@@ -13,12 +13,17 @@ export interface AppConfig {
   /** 앞단 프록시를 믿을지 (X-Forwarded-For). Fastify trustProxy 값 그대로 */
   trustProxy: boolean | number | string;
   demoEventFile: string;
+  /** 이보다 작은 저장소는 tarball 한 번에 받고, 크면 필요한 파일만 받는다 */
   maxTarballBytes: number;
   maxRepoFiles: number;
+  /** 내용을 받을 파일(소스·매니페스트·설정)의 크기 합 상한 */
+  maxSourceBytes: number;
   /** 브라우저에서 API를 부를 수 있는 출처 (프론트) */
   corsOrigins: string[];
-  /** 규칙으로 못 푼 단서를 Claude로 분류. 키가 없으면 끈다 */
+  /** 외부 서비스 판정에 쓰는 Claude. 키가 없으면 저장된 판정만 쓴다 (처음 보는 후보가 있으면 DETECTION_UNAVAILABLE) */
   llm: { apiKey: string; model: string; timeoutMs: number; maxItems: number } | null;
+  /** 테스트용 고정 판정 파일. 있으면 AI·DB 대신 이것만 쓴다 */
+  clueFixtureFile: string | null;
 }
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:9000', 'http://127.0.0.1:9000'];
@@ -61,14 +66,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     demoEventFile: env.DEMO_EVENT_FILE || 'data/demo-event.json',
     maxTarballBytes: int(env, 'MAX_TARBALL_MB', 50) * 1024 * 1024,
     maxRepoFiles: int(env, 'MAX_REPO_FILES', 20000),
+    maxSourceBytes: int(env, 'MAX_SOURCE_MB', 100) * 1024 * 1024,
     corsOrigins: corsOrigins(env.CORS_ORIGINS),
     llm: env.ANTHROPIC_API_KEY
       ? {
           apiKey: env.ANTHROPIC_API_KEY,
           model: env.CLAUDE_MODEL || 'claude-opus-5-5',
           timeoutMs: int(env, 'LLM_TIMEOUT_SECONDS', 90) * 1000,
-          maxItems: int(env, 'LLM_MAX_ITEMS', 300),
+          maxItems: int(env, 'LLM_MAX_ITEMS', 600),
         }
       : null,
+    clueFixtureFile: env.CLUE_FIXTURE_FILE || null,
   };
 }

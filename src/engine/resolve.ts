@@ -6,7 +6,7 @@
 
 import { globMatch, normalizeKey } from './glob.js';
 import { ASYNC_CATCH_RE, classifyHttp, isHttpClientType, RETRY_RE, STATUS_RE, TIMEOUT_RE } from './http.js';
-import { PROVIDERS, type Rule, type RuleMatch } from './rules.js';
+import { KNOWN_SERVICES, type Rule, type RuleMatch } from './rules.js';
 import type { SettingEntry } from './settings.js';
 import { DYN, type CallFact, type DeclFact, type FileFacts, type ValueFact } from './syntax.js';
 import type { CodeFacts, Evidence, Lang, Location, ProviderId } from './types.js';
@@ -128,7 +128,7 @@ function pick(outs: Outcome[]): Outcome {
 }
 
 export function roleFor(provider: ProviderId, callee: string, qualified: string, path?: string): string | undefined {
-  for (const r of PROVIDERS[provider].roles) {
+  for (const r of KNOWN_SERVICES[provider]?.roles ?? []) {
     if (r.callee && callee && (globMatch(r.callee, callee) || globMatch(r.callee, qualified))) return r.role;
     if (r.path && path && globMatch(r.path, path)) return r.role;
   }

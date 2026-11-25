@@ -20,8 +20,8 @@ npm run test:all                                     # 내부 테스트 전체 (
 프론트는 `http://localhost:9000`에서 `http://localhost:3000/api/...`를 부른다. 다른 출처의 브라우저 호출은 403이다 (`CORS_ORIGINS`).
 
 - Postman 앱에서는 `postman/outage-map.postman_collection.json`과 `postman/local.postman_environment.json`을 가져와서 Collection Runner로 순서대로 돌린다. "분석 상태" 요청은 끝날 때까지 스스로 반복한다.
-- GitHub 토큰이 없으면 IP당 시간당 60회(분석 1회에 3회)라서 금방 막힌다. `.env`에 `GITHUB_TOKEN`을 넣는다 (`.env.example` 참고). 토큰에는 아무 권한도 주지 않아도 된다 (공개 저장소만 읽는다).
-- Windows 폴더를 컨테이너에 bind mount해서 분석하면 파일 읽기가 매우 느리다 (Ohaasa 기준 8.9초 vs 0.02초). 서버는 tarball을 메모리에서 읽으므로 해당 없다.
+- GitHub 토큰이 없으면 IP당 시간당 60회(분석 1회에 4회)라서 금방 막히고, 큰 저장소에서 필요한 파일만 받는 방식(GraphQL)도 쓰지 못한다. `.env`에 `GITHUB_TOKEN`을 넣는다 (`.env.example` 참고). 토큰에는 아무 권한도 주지 않아도 된다 (공개 저장소만 읽는다).
+- Windows 폴더를 컨테이너에 bind mount해서 분석하면 파일 읽기가 매우 느리다 (Ohaasa 기준 8.9초 vs 0.02초). 서버는 GitHub에서 받은 내용을 메모리에서 바로 읽으므로 해당 없다.
 
 ## kangdora에 올리기
 
@@ -83,8 +83,10 @@ DATABASE_URL=postgres://<user>:<password>@<host>:5432/postgres
 | `RATE_LIMIT_BURST` · `RATE_LIMIT_REFILL_SECONDS` | 3 · 60 | IP별 새 분석 요청 제한 |
 | `TRUST_PROXY` | false | 앞단 프록시 단계 수. Cloudflare만 `1`, Cloudflare + 프론트 서버 `2` ("프록시와 TRUST_PROXY") |
 | `CORS_ORIGINS` | `http://localhost:9000,http://127.0.0.1:9000` | 브라우저 호출을 허용할 프론트 출처 (쉼표로 구분) |
-| `MAX_TARBALL_MB` · `MAX_REPO_FILES` | 50 · 20000 | 저장소 크기 상한 |
-| `ANTHROPIC_API_KEY` | 없음 | 있으면 규칙으로 못 푼 단서를 Claude로 분류한다 (docs/api.md "AI 판단"). 없으면 `otherServices`는 항상 빈 배열 |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | 분류에 쓰는 모델 |
-| `LLM_TIMEOUT_SECONDS` · `LLM_MAX_ITEMS` | 90 · 300 | 호출 시간 상한, 한 번에 보내는 단서 수 상한 (많이 쓰인 단서부터) |
+| `MAX_REPO_FILES` · `MAX_SOURCE_MB` | 20000 · 100 | 저장소 크기 상한: 파일 수(무시 폴더 제외), 읽을 파일(소스·매니페스트·설정) 크기 합. 이미지·캐시·git 기록은 세지 않는다 |
+| `MAX_TARBALL_MB` | 50 | 저장소 전체가 이보다 작으면 tarball 한 번에, 크면 필요한 파일만 받는다. 트리가 잘린 초대형 저장소는 tarball 받는 크기 상한 |
+| `ANTHROPIC_API_KEY` | 없음 | **필요.** 외부 서비스 판정(docs/api.md "외부 서비스 탐지"). 없으면 저장된 판정만 쓰고, 처음 보는 후보가 있는 분석은 `DETECTION_UNAVAILABLE`로 실패한다 |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | 판정에 쓰는 모델. 바꾸면 분석 캐시 키가 바뀐다 |
+| `LLM_TIMEOUT_SECONDS` · `LLM_MAX_ITEMS` | 90 · 600 | 호출 한 번의 시간 상한, 분석 한 번에 묻는 새 후보 수 상한 (많이 쓰인 후보부터, 150개씩 나눠 물음) |
+| `CLUE_FIXTURE_FILE` | 없음 | 테스트용. 있으면 AI·DB 대신 이 파일의 고정 판정을 쓴다 (`docker-compose.test.yml`이 `test/fixtures/judgments.json`을 넣음) |
 | `DEMO_EVENT_FILE` | `data/demo-event.json` | 데모 재현 이벤트 |

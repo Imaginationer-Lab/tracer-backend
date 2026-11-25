@@ -7,9 +7,9 @@ import { csharpHooks } from './lang/csharp.js';
 import { javaHooks } from './lang/java.js';
 import { jsHooks } from './lang/js.js';
 import { pythonHooks } from './lang/python.js';
-import { mentionsAny, resolveModulePath, scanImportSpecifiers, TEXT_SIGNAL } from './locate.js';
+import { mentionsAny, resolveModulePath, scanImportSpecifiers, scanPackageImports, textSignal } from './locate.js';
 import { endpointOf, looksLikeUrl, resolveFile, resolveUrlPattern, type CrossFile, type FileResolution, type RawAmbiguous } from './resolve.js';
-import { BUILTIN_RULES, COMMON_DEPENDENCIES, rulesetVersion, type Rule, type RuleMatch } from './rules.js';
+import { COMMON_DEPENDENCIES, rulesetVersion, type Rule, type RuleMatch } from './rules.js';
 import { parseConfig, parseManifest, type Dependency, type SettingEntry } from './settings.js';
 import { extractFacts, getParser, type FileFacts, type Hooks } from './syntax.js';
 import type { AmbiguousItem, EngineResult, Evidence, FileStatus, Lang, ProviderId, RepoFile } from './types.js';
@@ -38,7 +38,8 @@ const HOOKS: Record<Lang, Hooks> = {
 };
 
 export async function analyze(files: RepoFile[], options: AnalyzeOptions = {}): Promise<EngineResult> {
-  const rules = options.rules ?? BUILTIN_RULES;
+  // 규칙이 없으면 후보(의존성·호스트·HTTP 호출)만 모은다. 판정은 AI가 한다 (learn.ts)
+  const rules = options.rules ?? [];
   const statuses = new Map<string, FileStatus>();
   const texts = new Map<string, string>();
   const deps: Dependency[] = [];
@@ -51,6 +52,8 @@ export async function analyze(files: RepoFile[], options: AnalyzeOptions = {}): 
     if (role.kind === 'ignored') continue;
     if (role.kind === 'other') {
       statuses.set(f.path, { path: f.path, state: 'other' });
+    } else if (f.tooLarge) {
+      statuses.set(f.path, { path: f.path, state: 'skipped', reason: 'too-large' });
     } else if (role.kind === 'manifest') {
       deps.push(...parseManifest(role, f.path, f.content));
       statuses.set(f.path, { path: f.path, state: 'analyzed' });
@@ -102,7 +105,8 @@ export async function analyze(files: RepoFile[], options: AnalyzeOptions = {}): 
 
   // ② 텍스트 단서
   const prefilter = options.prefilter !== false;
-  for (const s of sources) if (!prefilter || TEXT_SIGNAL.test(s.text)) await parse(s);
+  const signal = textSignal(rules);
+  for (const s of sources) if (!prefilter || signal.test(s.text)) await parse(s);
 
   // ⑤-1 직접 해석: 공급자 흔적이 있는 파일과 그 파일의 이름·클래스
   let direct = resolveAll(null);
@@ -159,6 +163,16 @@ export async function analyze(files: RepoFile[], options: AnalyzeOptions = {}): 
     const hits = depRules.filter((r) => r.match.ecosystem === d.ecosystem && globMatch(r.match.name, d.name, true));
     for (const r of hits) evidence.push({ provider: r.provider, path: d.path, line: d.line, kind: 'manifest', detail: d.name, ruleId: r.id });
     if (!hits.length && !globMatch(COMMON_DEPENDENCIES[d.ecosystem], d.name, true)) raw.push({ kind: 'dependency', dep: d });
+  }
+  // package.json에 없는데 import하는 외부 패키지도 후보로 (위치는 import 줄)
+  const declaredNpm = new Set(deps.filter((d) => d.ecosystem === 'npm').map((d) => d.name));
+  for (const s of sources) {
+    if (s.lang !== 'typescript' && s.lang !== 'tsx' && s.lang !== 'javascript') continue;
+    for (const imp of scanPackageImports(s.text)) {
+      if (declaredNpm.has(imp.name) || globMatch(COMMON_DEPENDENCIES.npm, imp.name, true)) continue;
+      if (depRules.some((r) => r.match.ecosystem === 'npm' && globMatch(r.match.name, imp.name, true))) continue;
+      raw.push({ kind: 'dependency', dep: { ecosystem: 'npm', name: imp.name, path: s.path, line: imp.line } });
+    }
   }
 
   const settingRules = rules.filter((r): r is Rule & { match: Extract<RuleMatch, { type: 'setting' }> } => r.match.type === 'setting');
