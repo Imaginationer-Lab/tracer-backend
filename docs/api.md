@@ -175,14 +175,14 @@ GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 40
 ## 엔진과 연결
 
 ```
-tarball(메모리) → RepoFile[] → 워커 스레드 analyze() → present.ts → MySQL → 위 응답들
+tarball(메모리) → RepoFile[] → 워커 스레드 analyze() → present.ts → Postgres → 위 응답들
                                        │
                                        ├─ endpoints[] ─▶ endpoints / analysis_endpoints
                                        └─ ambiguous[] ─▶ (예정) LLM 분류 → clue_classifications
                                                           (예정) 규칙 제안 → 검증 → learned_rules
 ```
 
-## 저장 (MySQL 8.4, `src/server/db/migrations.ts`)
+## 저장 (PostgreSQL 19, `src/server/db/migrations.ts`, 자료형 선택은 docs/postgres.md)
 
 | 테이블 | 키 | 범위 | 용도 |
 |---|---|---|---|
