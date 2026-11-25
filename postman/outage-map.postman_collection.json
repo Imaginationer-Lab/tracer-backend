@@ -101,6 +101,7 @@
                   "    const stripe = body.result.providers.find((p) => p.id === 'stripe');",
                   "    pm.expect(stripe, JSON.stringify(body.result.providers)).to.be.an('object');",
                   "    pm.expect(stripe.usage).to.eql('used');",
+                  "    pm.expect([stripe.role, stripe.category]).to.eql(['결제', 'payment']);",
                   "    pm.expect(stripe.fileCount).to.be.above(0);",
                   "    pm.expect(stripe.files.length).to.eql(stripe.fileCount);",
                   "    stripe.files.forEach((f) => { pm.expect(f.path).to.be.a('string'); pm.expect(f.line).to.be.at.least(1); });",
