@@ -32,7 +32,7 @@ paths:
                 repoUrl:
                   type: string
                   pattern: '^\s*https://github\.com/[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}(\.git)?(/.*)?\s*$'
-                  examples: ['https://github.com/acme/demo-store']
+                  examples: ['https://github.com/Imaginationer-Lab/tracer-demo-store']
       responses:
         '202': { description: 새 분석 시작 (status=running), content: { application/json: { schema: { $ref: '#/components/schemas/Analysis' } } } }
         '200': { description: 같은 커밋 결과 (status=done), content: { application/json: { schema: { $ref: '#/components/schemas/Analysis' } } } }
@@ -191,6 +191,23 @@ components:
         usage: { type: string, enum: [used, declared-only] }
         statusSupport: { type: string, enum: [live, none] }
 
+    OtherServiceSummary:
+      type: object
+      description: 세 공급자 밖의 외부 서비스. 규칙으로 못 푼 단서를 AI(Claude)가 판단한 결과라 상태 연동·근거 상세가 없다
+      required: [name, clues, fileCount, files]
+      properties:
+        name: { type: string, examples: [SendGrid, Expo Push Notifications] }
+        clues: { type: array, items: { type: string }, description: '판단 재료: host, 패키지 이름, 호출식' }
+        fileCount: { type: integer }
+        files:
+          type: array
+          items:
+            type: object
+            required: [path, line]
+            properties:
+              path: { type: string }
+              line: { type: integer, minimum: 1 }
+
     FileEntry:
       oneOf:
         - type: object
@@ -220,9 +237,10 @@ components:
 
     AnalysisResult:
       type: object
-      required: [providers, files, summary]
+      required: [providers, otherServices, files, summary]
       properties:
         providers: { type: array, items: { $ref: '#/components/schemas/ProviderSummary' } }
+        otherServices: { type: array, items: { $ref: '#/components/schemas/OtherServiceSummary' }, description: AI가 꺼져 있거나 찾은 게 없으면 빈 배열 }
         files: { type: array, items: { $ref: '#/components/schemas/FileEntry' } }
         summary:
           type: object

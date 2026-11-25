@@ -48,7 +48,7 @@
 ### 3-1. `POST /analyses` 분석 시작
 
 ```json
-{ "repoUrl": "https://github.com/acme/demo-store" }
+{ "repoUrl": "https://github.com/Imaginationer-Lab/tracer-demo-store" }
 ```
 
 - 허용 형식 (앞뒤 공백 제거 후): `^https://github\.com/[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}(\.git)?(/.*)?$`
@@ -60,9 +60,9 @@
 
 ```json
 {
-  "id": "an_10728fc20ab4eb1b",
+  "id": "an_60f9b44155d4b902",
   "status": "running",
-  "repo": { "owner": "stripe-samples", "name": "checkout-one-time-payments", "branch": "main", "commit": "c834ba3ae155bd77a6aeb5879b58edd6a944af00" },
+  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "66eccdfa73f3acf459eccdfbe2f8f1f611fda514" },
   "steps": [
     { "key": "repo", "state": "done" },
     { "key": "files", "state": "running" },
@@ -77,40 +77,42 @@
 
 ### 3-2. `GET /analyses/:id` 분석 상태·결과
 
-실제 응답 (`stripe-samples/checkout-one-time-payments`, 줄임):
+실제 응답 (공개 예제 저장소 `Imaginationer-Lab/tracer-demo-store`, 줄이지 않음). 디자인 SCR-002와 같은 결과다:
 
 ```json
 {
-  "id": "an_10728fc20ab4eb1b",
+  "id": "an_60f9b44155d4b902",
   "status": "done",
-  "repo": { "owner": "stripe-samples", "name": "checkout-one-time-payments", "branch": "main", "commit": "c834ba3ae155bd77a6aeb5879b58edd6a944af00" },
+  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "66eccdfa73f3acf459eccdfbe2f8f1f611fda514" },
   "steps": [ { "key": "repo", "state": "done" }, { "key": "files", "state": "done" }, { "key": "detect", "state": "done" } ],
   "error": null,
   "result": {
     "providers": [
-      {
-        "id": "stripe",
-        "name": "Stripe",
-        "role": "결제",
-        "category": "payment",
-        "fileCount": 7,
-        "files": [
-          { "path": "server/dotnet/Program.cs", "line": 50 },
-          { "path": "server/java/src/main/java/com/stripe/sample/Server.java", "line": 52 },
-          { "path": "server/nextjs/lib/stripe.ts", "line": 8 }
-        ],
-        "usage": "used",
-        "statusSupport": "none"
-      }
+      { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
+      { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" }
     ],
+    "otherServices": [],
     "files": [
+      { "path": "package.json", "state": "analyzed", "matches": [] },
       { "path": "README.md", "state": "other" },
-      { "path": "server/nextjs/lib/stripe.ts", "state": "analyzed", "matches": [ { "provider": "stripe", "line": 8 } ] },
-      { "path": "server/nextjs/package.json", "state": "analyzed", "matches": [] }
+      { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
+      { "path": "src/payments/checkout.ts", "state": "analyzed", "matches": [ { "provider": "stripe", "line": 2 } ] },
+      { "path": "src/storage/upload.ts", "state": "analyzed", "matches": [ { "provider": "aws-s3", "line": 6 } ] }
     ],
-    "summary": { "analyzed": 35, "skipped": 0 }
+    "summary": { "analyzed": 4, "skipped": 0 }
   }
 }
+```
+
+`otherServices`는 세 공급자 밖에서 찾은 외부 서비스다. 예제 저장소에는 없고, 실제 저장소(`JeongWon-CHO/Ohaasa`)에서는 이렇게 나온다 (줄임):
+
+```json
+"otherServices": [
+  { "name": "Expo Push Notifications", "clues": ["expo-notifications", "exp.host", "expo-server-sdk"], "fileCount": 4,
+    "files": [ { "path": "apps/android/package.json", "line": 28 }, { "path": "supabase/functions/send-horoscope-notifications/index.ts", "line": 243 } ] },
+  { "name": "Asahi Broadcasting", "clues": ["www.asahi.co.jp"], "fileCount": 1, "files": [ { "path": "backend/src/crawler/fetcher.ts", "line": 49 } ] }
+]
 ```
 
 - `steps[].key`의 화면 문구: `repo` 저장소와 기본 브랜치 확인 · `files` 분석할 파일 목록 읽기 · `detect` 외부 서비스 단서 찾기
@@ -122,32 +124,44 @@
   - 경로가 5,000개를 넘으면 `other`는 빠진다.
 - `usage: "declared-only"`면 의존성 선언만 있고 코드 호출은 못 찾은 것이다.
 - 분석이 끝났는지는 `steps`가 아니라 `status`로 판단한다.
+- `otherServices`: 규칙으로 못 푼 단서(모르는 host, 패키지, 주소를 못 푼 HTTP 호출)를 서버가 AI(Claude)에 물어 판단한 결과다. 서비스 이름별로 묶여 있고 파일이 많은 순이다.
+  - 상태 연동과 근거 상세 API는 없다. 보여 준다면 "그 밖의 외부 서비스 (AI 판단)"처럼 확정이 아님을 표시한다.
+  - 서버에 AI 키가 없거나 AI 호출이 실패하면 빈 배열이다 (분석은 그대로 성공).
+- AI가 세 공급자 중 하나로 판단한 단서는 그 공급자의 근거에 들어가고 `reason.kind`가 `llm`, 문구가 `AI 판단 · …`이다.
 
 ### 3-3. `GET /analyses/:id/providers/:providerId` 근거 코드
 
 공급자를 선택할 때 부른다. `providerId`: `supabase` · `stripe` · `aws-s3`
 
-실제 응답 (줄임):
+실제 응답 (예제 저장소의 Stripe):
 
 ```json
 {
   "provider": { "id": "stripe", "name": "Stripe", "statusPageUrl": "https://status.stripe.com" },
   "evidence": [
     {
-      "path": "server/dotnet/Program.cs",
-      "line": 50,
-      "language": "csharp",
-      "reason": { "kind": "call", "label": "PriceService 호출" },
+      "path": "src/payments/checkout.ts",
+      "line": 2,
+      "language": "typescript",
+      "reason": { "kind": "http", "label": "api.stripe.com 호출" },
       "snippet": {
-        "startLine": 49,
-        "lines": ["{", "    var priceService = new PriceService();", "    var price = await priceService.GetAsync(stripeOptions.Value.Price);", "", "    return Results.Ok(new"]
+        "startLine": 1,
+        "lines": [
+          "export function startCheckout(params: URLSearchParams): Promise<Response> {",
+          "  return fetch('https://api.stripe.com/v1/checkout/sessions', {",
+          "    method: 'POST',",
+          "    headers: {",
+          "      Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`,"
+        ]
       },
       "facts": { "errorHandling": false, "retry": false, "timeout": false, "statusCheck": false },
-      "endpoint": null
+      "endpoint": { "host": "api.stripe.com", "path": "/v1/checkout/sessions" }
     }
   ]
 }
 ```
+
+SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storage/upload.ts:6`, `reason.label` `s3.send 호출`).
 
 디자인 예제(`src/payments/checkout.ts`)라면 이렇게 나온다:
 
@@ -241,8 +255,16 @@ export type FileEntry =
   | { path: string; state: 'skipped'; reason: SkipReason }
   | { path: string; state: 'other' };
 
+export interface OtherServiceSummary {
+  name: string;                                // AI가 붙인 서비스 이름 (예: SendGrid)
+  clues: string[];                             // 판단 재료: host, 패키지 이름, 호출식
+  fileCount: number;
+  files: { path: string; line: number }[];
+}
+
 export interface AnalysisResult {
   providers: ProviderSummary[];
+  otherServices: OtherServiceSummary[];        // 세 공급자 밖의 외부 서비스 (AI 판단). 없으면 []
   files: FileEntry[];
   summary: { analyzed: number; skipped: number };
 }
@@ -312,7 +334,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 ### SCR-001
 
 - 제출 중에는 중복 제출을 막는다 (버튼 비활성).
-- "예제 저장소 사용"은 입력란만 채우고 분석은 사용자가 시작한다. 공개 예제 저장소 URL은 아직 정해지지 않았다 (7장).
+- "예제 저장소 사용"은 입력란만 채우고 분석은 사용자가 시작한다. 공개 예제 저장소: `https://github.com/Imaginationer-Lab/tracer-demo-store`
 
 ### SCR-002 상단
 
@@ -376,10 +398,10 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | 탐지 범위: "JS·TS 소스와 package.json" (FEAT-002) | 넓힘. Python·Java·C#, Svelte·Vue, 설정 파일(.env, application.yml, appsettings.json)까지 |
 | 역할 라벨·스니펫·코드 사실 | 노션에는 없고 디자인(figdora)에만 있음. 백엔드가 채운다 |
 | 재현 데이터 위치: "앱에 포함된 가상 이벤트" / `demo-replay/stripe-503.json` | 백엔드가 `GET /demo-events/current`로 준다. 프론트에 같은 JSON을 넣어 써도 된다 (필드 동일) |
-| 공개 예제 저장소 (주제 확정 "게시한 뒤 연결") | **아직 없음.** 예제 소스(`demo-store/`)를 공개 GitHub에 올리고 URL을 "예제 저장소 사용"에 넣어야 한다. 백엔드 테스트 fixture(`test/fixtures/ts-shop`)도 같은 구조(`src/auth/login.ts`, `src/payments/checkout.ts:2`, `src/storage/upload.ts`)다 |
+| 공개 예제 저장소 (주제 확정 "게시한 뒤 연결") | `Imaginationer-Lab/tracer-demo-store` (공개). 분석하면 디자인 SCR-002와 같은 결과가 나온다 (3-2) |
 | 빌드 설정(Dockerfile, serverless 설정 등) 읽기 (주제 확정 MVP) | 아직 안 함. 매니페스트와 설정 파일만 읽는다 |
-| LLM 분류·요약 | 확장 후보 (기획과 같음). 인터페이스만 있음 |
-| Expo 등 오하아사 사례 공급자 | MVP 범위 밖 (기획도 3개 우선) |
+| LLM 분류·요약 | 분류는 들어감: 규칙으로 못 푼 단서를 Claude가 판단해 `otherServices`와 `llm` 근거로 준다. 요약은 아직 없음 |
+| Expo 등 오하아사 사례 공급자 | 상태 연동·근거 상세는 MVP 범위 밖 (기획도 3개 우선). 이름과 위치는 `otherServices`로 준다 |
 
 ## 8. 주의할 점
 
