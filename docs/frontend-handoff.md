@@ -2,7 +2,8 @@
 
 > 이 문서만 보고 프론트(SCR-001 저장소 입력, SCR-002 분석 대시보드)를 구현할 수 있게 쓴 인계 문서다.
 > 기계가 읽는 명세는 [`openapi.yaml`](openapi.yaml), 서버 쪽 상세는 [`api.md`](api.md).
-> 기준: 백엔드 브랜치 `feat/analyzer`, 2026-11-25.
+> 기준: `Imaginationer-Lab/tracer-backend` `main`, 2026-11-25.
+> 프론트가 자기 타입을 따로 쓴다면 9장의 어댑터로 이 API 응답을 변환한다 (백엔드 응답은 정보를 넉넉히 주고, 화면에 맞는 모양은 프론트에서 고른다).
 
 ## 0. 한 줄 요약
 
@@ -385,3 +386,143 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 - 경로 구분자는 항상 `/`, 저장소 루트 기준이다. 줄 번호는 1부터 센다.
 - 브라우저에서는 반드시 `http://localhost:9100`에서 띄운다 (`127.0.0.1:9100`도 허용). 다른 포트는 403이다.
 - Postman 컬렉션 `postman/outage-map.postman_collection.json`으로 실제 응답을 바로 볼 수 있다.
+
+## 9. 프론트 타입으로 바꾸기 (어댑터)
+
+백엔드는 응답을 넉넉하게 주고, 화면에 맞는 모양은 프론트 어댑터에서 만든다. 아래는 프론트에서 정의한 `AnalysisResult` 계열 타입으로 바꾸는 기준이다.
+
+### 대응표
+
+| 프론트 필드 | 백엔드에서 만드는 법 | 정해 둔 것 |
+|---|---|---|
+| 결과 받기 | `POST /analyses` → `status`가 `done`이 될 때까지 1초 폴링 | 분석 중 화면은 `steps`로 진행 표시. 150초가 지나면 일시 오류 |
+| `repo` | `Analysis.repo` | 그대로 |
+| `files: string[]` | `result.files` 중 `state === 'analyzed'`의 `path` | 트리에 README 같은 비분석 파일도 보이려면 `state === 'other'`도 넣는다 |
+| `skipped[]` | `result.files` 중 `state === 'skipped'` | 사유 `too-large`→`too_large`, `minified`→`minified`, `parse-error`→`parse_error`. **`fetch_failed`는 생기지 않는다** (서버가 tarball 하나로 받음). 프론트 타입의 `reason`에 `minified`·`parse_error`를 더한다 |
+| `providers[].category` | `ProviderSummary.role` 한국어 라벨 → enum | 로그인→`auth`, 결제→`payment`, 파일 업로드·파일 저장→`storage`, 데이터베이스→`database`. 프론트 타입에 `database`를 더한다 |
+| `providers[].files[]` (`path`, `line`, `snippet`) | `GET /analyses/:id/providers/:providerId`의 `evidence[]` (공급자당 1번, 최대 3번) | 순서는 강한 근거 순 (첫 항목이 "여기부터 확인하세요"). 줄 번호를 매기려면 `snippet.startLine`이 필요해서 `snippetStartLine`을 더한다 |
+| `providers[].facts` (공급자 단위) | `evidence[].facts` (근거 단위)를 합침 | 호출부가 여러 개면 **전부 처리할 때만 `true`**. `statusHandling` = `statusCheck`. 대응 가이드의 "○○.ts에 … 없어요"처럼 파일 이름이 필요하면 근거 단위 `facts`를 그대로 쓴다 |
+| `AnalyzeError.kind` | `error.code` | `REPO_NOT_ACCESSIBLE`→`not_found`, `GITHUB_RATE_LIMITED`→`rate_limited`(`resetAt`), 그 밖은 `temporary`. 백엔드에만 있는 것: `INVALID_REPO_URL`→`invalid_url`, `REPO_TOO_LARGE`→`too_large`, 우리 서버 요청 제한 `RATE_LIMITED`→`busy`(`retryAfter`초). 이 세 값을 프론트 타입에 더한다 |
+| `ProviderStatus.state` | `state` | `operational`→`ok`, `degraded`·`outage`·`maintenance`→`degraded`, `unknown`→`unknown`. 조회 실패(`502 STATUS_UNAVAILABLE`)도 `unknown` ("상태 확인 불가") |
+
+어댑터로 바꾸면서 버리는 것: `endpoint`, `reason.label`/`kind`, `language`, `usage`, `statusSupport`, `fileCount`. 화면에 필요해지면 그때 꺼내 쓴다. 특히 `statusSupport`는 "실시간 연동 전" 표시와 상태 API 호출 여부에 필요하다.
+
+### 예시 코드
+
+4장 타입을 `contract.ts`로 두고 그대로 쓸 수 있다 (strict 타입 검사 통과).
+
+```ts
+import type { Analysis, ApiError, ErrorCode, ProviderDetail, ProviderId, ProviderStatus } from './contract.js'; // 4장 타입
+
+// 프론트 타입 (원래 정의에서 값만 넓힘: skipped.reason, category, AnalyzeError.kind, snippetStartLine)
+export type FrontAnalysisResult = {
+  repo: { owner: string; name: string; branch: string; commit: string };
+  files: string[];
+  skipped: { path: string; reason: 'too_large' | 'minified' | 'parse_error' }[];
+  providers: {
+    id: ProviderId;
+    name: string;
+    category: 'auth' | 'payment' | 'storage' | 'database';
+    files: { path: string; line: number; snippet: string[]; snippetStartLine: number }[];
+    facts?: { retry: boolean; timeout: boolean; statusHandling: boolean };
+  }[];
+};
+export type AnalyzeError = {
+  kind: 'not_found' | 'rate_limited' | 'temporary' | 'invalid_url' | 'too_large' | 'busy';
+  message: string;
+  resetAt?: string;
+  retryAfter?: number;
+};
+export type FrontProviderStatus = { providerId: ProviderId; state: 'ok' | 'degraded' | 'unknown'; description: string; fetchedAt: string };
+
+const API = 'http://localhost:3000/api';
+
+export class AnalyzeFailure extends Error {
+  constructor(readonly error: AnalyzeError) {
+    super(error.message);
+  }
+}
+
+const KIND: Partial<Record<ErrorCode, AnalyzeError['kind']>> = {
+  REPO_NOT_ACCESSIBLE: 'not_found',
+  GITHUB_RATE_LIMITED: 'rate_limited',
+  RATE_LIMITED: 'busy', // 우리 서버 요청 제한 (retryAfter초 뒤 다시)
+  INVALID_REPO_URL: 'invalid_url',
+  REPO_TOO_LARGE: 'too_large',
+};
+
+export function toAnalyzeError(e: ApiError): AnalyzeError {
+  return {
+    kind: KIND[e.code] ?? 'temporary',
+    message: e.message,
+    ...(e.resetAt ? { resetAt: e.resetAt } : {}),
+    ...(e.retryAfter !== undefined ? { retryAfter: e.retryAfter } : {}),
+  };
+}
+
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API}${path}`, { ...init, headers: { 'Content-Type': 'application/json' } });
+  const body: unknown = await res.json();
+  if (!res.ok) throw new AnalyzeFailure(toAnalyzeError((body as { error: ApiError }).error));
+  return body as T;
+}
+
+// 백엔드 role(한국어 라벨) → category
+const CATEGORY: Record<string, FrontAnalysisResult['providers'][number]['category']> = {
+  로그인: 'auth',
+  결제: 'payment',
+  '파일 업로드': 'storage',
+  '파일 저장': 'storage',
+  데이터베이스: 'database',
+};
+const REASON = { 'too-large': 'too_large', minified: 'minified', 'parse-error': 'parse_error' } as const;
+
+/** POST → 1초 폴링 → 공급자 상세(최대 3번) → 프론트 타입 */
+export async function analyze(repoUrl: string, onSteps?: (steps: Analysis['steps']) => void): Promise<FrontAnalysisResult> {
+  let a = await call<Analysis>('/analyses', { method: 'POST', body: JSON.stringify({ repoUrl: repoUrl.trim() }) });
+  const deadline = Date.now() + 150_000;
+  while (a.status === 'running') {
+    onSteps?.(a.steps);
+    if (Date.now() > deadline) throw new AnalyzeFailure({ kind: 'temporary', message: '분석이 너무 오래 걸려요. 잠시 후 다시 시도해 주세요.' });
+    await new Promise((r) => setTimeout(r, 1000));
+    a = await call<Analysis>(`/analyses/${a.id}`);
+  }
+  if (a.status === 'failed' || !a.result) {
+    throw new AnalyzeFailure(toAnalyzeError(a.error ?? { code: 'INTERNAL_ERROR', message: '분석에 실패했어요.', retryable: true }));
+  }
+  const { id, repo, result } = { id: a.id, repo: a.repo, result: a.result };
+  const details = await Promise.all(result.providers.map((p) => call<ProviderDetail>(`/analyses/${id}/providers/${p.id}`)));
+
+  return {
+    repo,
+    files: result.files.filter((f) => f.state === 'analyzed').map((f) => f.path),
+    skipped: result.files.flatMap((f) => (f.state === 'skipped' ? [{ path: f.path, reason: REASON[f.reason] }] : [])),
+    providers: result.providers.map((p, i) => {
+      const evidence = details[i]!.evidence;
+      const facts = evidence.flatMap((e) => (e.facts ? [e.facts] : []));
+      return {
+        id: p.id,
+        name: p.name,
+        category: CATEGORY[p.role] ?? 'storage',
+        // 근거는 강한 순서. 첫 항목이 "여기부터 확인하세요"
+        files: evidence.map((e) => ({ path: e.path, line: e.line, snippet: e.snippet.lines, snippetStartLine: e.snippet.startLine })),
+        // 호출부가 여러 개면 "전부 처리할 때만 true" (하나라도 빠지면 대응 가이드에 표시)
+        ...(facts.length
+          ? { facts: { retry: facts.every((f) => f.retry), timeout: facts.every((f) => f.timeout), statusHandling: facts.every((f) => f.statusCheck) } }
+          : {}),
+      };
+    }),
+  };
+}
+
+/** Supabase처럼 statusSupport === 'live'인 공급자만 부른다. 조회 실패(502)는 unknown */
+export async function providerStatus(providerId: ProviderId): Promise<FrontProviderStatus> {
+  try {
+    const s = await call<ProviderStatus>(`/providers/${providerId}/status`);
+    const state = s.state === 'operational' ? 'ok' : s.state === 'unknown' ? 'unknown' : 'degraded';
+    return { providerId, state, description: s.description, fetchedAt: s.fetchedAt };
+  } catch {
+    return { providerId, state: 'unknown', description: '상태 확인 불가', fetchedAt: new Date().toISOString() };
+  }
+}
+```
