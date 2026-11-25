@@ -19,7 +19,9 @@ const PRIORITY: Record<Evidence['kind'], number> = {
 const DECLARATIVE = new Set<Evidence['kind']>(['manifest', 'config']);
 const MAX_PATHS = 5000;
 
-const better = (a: Evidence, b: Evidence) => PRIORITY[a.kind] > PRIORITY[b.kind] || (PRIORITY[a.kind] === PRIORITY[b.kind] && a.line < b.line);
+/** 우선순위가 같으면 클라이언트 생성보다 실제 호출, 그다음 위쪽 줄 */
+const better = (a: Evidence, b: Evidence) =>
+  PRIORITY[a.kind] !== PRIORITY[b.kind] ? PRIORITY[a.kind] > PRIORITY[b.kind] : !!a.setup !== !!b.setup ? !a.setup : a.line < b.line;
 
 /** 공급자·파일마다 가장 강한 근거 하나 */
 function bestByFile(evidence: Evidence[]): Map<string, Evidence> {

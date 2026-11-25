@@ -24,6 +24,8 @@ export interface Evidence extends Location {
   role?: string;
   facts?: CodeFacts;
   ruleId?: string;
+  /** 클라이언트를 만드는 호출(new S3Client 등). 같은 파일에 실제로 쓰는 호출이 있으면 그쪽을 대표로 보여 준다 */
+  setup?: boolean;
   /** host로 판정한 근거면 그 host와 경로 (엔드포인트 저장용). '*'는 동적인 부분 */
   endpoint?: { host: string; path?: string };
 }
