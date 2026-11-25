@@ -31,8 +31,14 @@ describe('TS 쇼핑몰 (디자인 예제)', () => {
     expect(http).toMatchObject({ line: 2, detail: 'api.stripe.com' });
     expect(http.facts).toEqual({ errorHandling: false, retry: false, timeout: false, statusCheck: false });
 
+    // 기능정의서 공통 형식: providers[].files[].path, line
+    const stripe = toAnalysisResult(r).providers.find((p) => p.id === 'stripe')!;
+    expect(stripe.files).toContainEqual({ path: 'src/payments/checkout.ts', line: 2 });
+    expect(stripe.fileCount).toBe(stripe.files.length);
+
     const detail = toProviderDetail(r, 'stripe').evidence.find((e) => e.path === 'src/payments/checkout.ts')!;
     expect(detail.reason.label).toBe('api.stripe.com 호출');
+    expect(detail.endpoint).toEqual({ host: 'api.stripe.com', path: '/v1/checkout/sessions' });
     expect(detail.snippet.startLine).toBe(1);
     expect(detail.snippet.lines[1]).toContain("fetch('https://api.stripe.com/v1/checkout/sessions'");
   });
