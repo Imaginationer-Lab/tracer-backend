@@ -3,7 +3,8 @@ import { pack } from 'tar-stream';
 import { describe, expect, it } from 'vitest';
 import { MAX_SOURCE_BYTES } from '../src/engine/files.js';
 import { RateLimiter } from '../src/server/analyses/rate-limiter.js';
-import type { AppConfig } from '../src/server/config.js';
+import { loadConfig, type AppConfig } from '../src/server/config.js';
+import { isOriginAllowed } from '../src/server/cors.js';
 import { parseDemoEvent } from '../src/server/demo/demo.controller.js';
 import { ApiException } from '../src/server/errors.js';
 import { parseRepoUrl } from '../src/server/github/github.client.js';
@@ -45,6 +46,28 @@ describe('RateLimiter', () => {
     // 다른 IP는 따로 센다
     expect(limiter.take('5.6.7.8', t0).ok).toBe(true);
     limiter.onModuleDestroy();
+  });
+});
+
+describe('CORS', () => {
+  it('기본값은 프론트(localhost:9100)만 허용', () => {
+    const { corsOrigins } = loadConfig({ DATABASE_URL: 'postgres://x' });
+    expect(corsOrigins).toEqual(['http://localhost:9100', 'http://127.0.0.1:9100']);
+    expect(isOriginAllowed('http://localhost:9100', corsOrigins)).toBe(true);
+    expect(isOriginAllowed('http://localhost:3000', corsOrigins)).toBe(false);
+    expect(isOriginAllowed('https://evil.example', corsOrigins)).toBe(false);
+  });
+
+  it('Origin이 없는 요청(curl, Postman, 헬스체크)은 통과', () => {
+    expect(isOriginAllowed(undefined, ['http://localhost:9100'])).toBe(true);
+  });
+
+  it('CORS_ORIGINS로 바꿀 수 있고, 형식이 틀리면 시작하지 않는다', () => {
+    expect(loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'https://outage.example.com/, http://localhost:9100' }).corsOrigins).toEqual([
+      'https://outage.example.com',
+      'http://localhost:9100',
+    ]);
+    expect(() => loadConfig({ DATABASE_URL: 'postgres://x', CORS_ORIGINS: 'localhost:9100' })).toThrow(/CORS_ORIGINS/);
   });
 });
 

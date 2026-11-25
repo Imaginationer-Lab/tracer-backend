@@ -353,6 +353,88 @@
       ]
     },
     {
+      "name": "CORS (프론트 localhost:9100만)",
+      "item": [
+        {
+          "name": "9100에서 온 요청 → CORS 헤더",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Origin", "value": "http://localhost:9100" }],
+            "url": "{{baseUrl}}/api/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200, Access-Control-Allow-Origin: http://localhost:9100', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:9100');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9100의 프리플라이트 → 통과",
+          "request": {
+            "method": "OPTIONS",
+            "header": [
+              { "key": "Origin", "value": "http://localhost:9100" },
+              { "key": "Access-Control-Request-Method", "value": "POST" },
+              { "key": "Access-Control-Request-Headers", "value": "content-type" }
+            ],
+            "url": "{{baseUrl}}/api/analyses"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204, POST·Content-Type 허용', () => {",
+                  "  pm.response.to.have.status(204);",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:9100');",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Methods')).to.include('POST');",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Headers').toLowerCase()).to.include('content-type');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "다른 출처 → 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Origin", "value": "https://evil.example" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/analyses",
+            "body": { "mode": "raw", "raw": "{\n  \"repoUrl\": \"{{repoUrl}}\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 ORIGIN_NOT_ALLOWED, CORS 헤더 없음', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ORIGIN_NOT_ALLOWED');",
+                  "  pm.expect(pm.response.headers.has('Access-Control-Allow-Origin')).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "데모 재현 이벤트",
       "request": { "method": "GET", "url": "{{baseUrl}}/api/demo-events/current" },
       "event": [
