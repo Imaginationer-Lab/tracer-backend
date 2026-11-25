@@ -1,0 +1,377 @@
+{
+  "info": {
+    "name": "장애 지도 API",
+    "description": "docs/api.md 기준 테스트. Postman 앱에서 Collection Runner로 순서대로 실행하거나, `docker compose --profile test run --rm newman`으로 실행한다. '분석 상태' 요청은 status가 done이 될 때까지 2초 간격으로 스스로 반복한다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "analysisId", "value": "" },
+    { "key": "pollCount", "value": "0" }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 모든 오류 응답은 같은 모양이어야 한다",
+          "if (pm.response.code >= 400) {",
+          "  pm.test('오류 응답 모양: { error: { code, message, retryable } }', () => {",
+          "    const e = pm.response.json().error;",
+          "    pm.expect(e).to.be.an('object');",
+          "    pm.expect(e.code).to.be.a('string');",
+          "    pm.expect(e.message).to.be.a('string');",
+          "    pm.expect(e.retryable).to.be.a('boolean');",
+          "  });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "헬스체크",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/health" },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200, DB 연결됨', () => {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json()).to.eql({ status: 'ok', db: 'ok' });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "분석",
+      "item": [
+        {
+          "name": "분석 시작",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/analyses",
+            "body": { "mode": "raw", "raw": "{\n  \"repoUrl\": \"{{repoUrl}}\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('새 분석이면 202, 같은 커밋 결과가 있으면 200', () => pm.expect(pm.response.code).to.be.oneOf([200, 202]));",
+                  "pm.test('id·저장소·커밋·단계가 있다', () => {",
+                  "  pm.expect(body.id).to.match(/^an_[0-9a-f]{16}$/);",
+                  "  pm.expect(body.repo.commit).to.match(/^[0-9a-f]{40}$/);",
+                  "  pm.expect(body.steps.map((s) => s.key)).to.eql(['repo', 'files', 'detect']);",
+                  "  pm.expect(body.status).to.be.oneOf(['running', 'done']);",
+                  "});",
+                  "pm.collectionVariables.set('analysisId', body.id);",
+                  "pm.collectionVariables.set('pollCount', '0');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "분석 상태 (완료까지 반복)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/analyses/{{analysisId}}" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const n = Number(pm.collectionVariables.get('pollCount') || 0);",
+                  "const next = (name) => (pm.execution && typeof pm.execution.setNextRequest === 'function' ? pm.execution.setNextRequest(name) : postman.setNextRequest(name));",
+                  "if (body.status === 'running' && n < 90) {",
+                  "  pm.collectionVariables.set('pollCount', String(n + 1));",
+                  "  setTimeout(() => {}, 2000);",
+                  "  next(pm.info.requestName);",
+                  "} else {",
+                  "  pm.test('분석이 끝났다', () => pm.expect(body.status, JSON.stringify(body.error)).to.eql('done'));",
+                  "  pm.test('Stripe를 찾았다', () => {",
+                  "    const stripe = body.result.providers.find((p) => p.id === 'stripe');",
+                  "    pm.expect(stripe, JSON.stringify(body.result.providers)).to.be.an('object');",
+                  "    pm.expect(stripe.usage).to.eql('used');",
+                  "    pm.expect(stripe.fileCount).to.be.above(0);",
+                  "    pm.expect(stripe.statusSupport).to.eql('none');",
+                  "  });",
+                  "  pm.test('파일 트리 항목 모양', () => {",
+                  "    pm.expect(body.result.files.length).to.be.above(0);",
+                  "    body.result.files.forEach((f) => pm.expect(f.state).to.be.oneOf(['analyzed', 'skipped', 'other']));",
+                  "    pm.expect(body.result.files.some((f) => f.state === 'analyzed' && f.matches.some((m) => m.provider === 'stripe'))).to.be.true;",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "같은 커밋 다시 요청 (캐시)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/analyses",
+            "body": { "mode": "raw", "raw": "{\n  \"repoUrl\": \"{{repoUrl}}\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200으로 같은 분석을 돌려준다 (요청 제한 토큰을 쓰지 않음)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get('analysisId'));",
+                  "  pm.expect(body.status).to.eql('done');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stripe 근거",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/analyses/{{analysisId}}/providers/stripe" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200, 공급자 정보', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(body.provider).to.eql({ id: 'stripe', name: 'Stripe', statusPageUrl: 'https://status.stripe.com' });",
+                  "});",
+                  "pm.test('근거마다 경로·줄·문구·스니펫이 있다', () => {",
+                  "  pm.expect(body.evidence.length).to.be.above(0);",
+                  "  body.evidence.forEach((e) => {",
+                  "    pm.expect(e.path).to.be.a('string');",
+                  "    pm.expect(e.line).to.be.at.least(1);",
+                  "    pm.expect(e.reason.label).to.be.a('string');",
+                  "    pm.expect(e.snippet.startLine).to.be.at.least(1);",
+                  "    pm.expect(e.snippet.lines.length).to.be.within(1, 5);",
+                  "  });",
+                  "});",
+                  "pm.test('호출부에는 코드 사실이 있다', () => {",
+                  "  const calls = body.evidence.filter((e) => e.reason.kind === 'call' || e.reason.kind === 'http');",
+                  "  calls.forEach((e) => pm.expect(e.facts).to.have.all.keys('errorHandling', 'retry', 'timeout', 'statusCheck'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "모르는 공급자 → 404",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/analyses/{{analysisId}}/providers/paypal" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 PROVIDER_NOT_FOUND', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('PROVIDER_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "오류",
+      "item": [
+        {
+          "name": "URL 형식 오류 → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/analyses",
+            "body": { "mode": "raw", "raw": "{\n  \"repoUrl\": \"github.com/acme\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REPO_URL, 다시 시도 없음', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.code).to.eql('INVALID_REPO_URL');",
+                  "  pm.expect(e.retryable).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "본문 없음 → 400",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/analyses",
+            "body": { "mode": "raw", "raw": "{}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 INVALID_REPO_URL', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('INVALID_REPO_URL');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "없는 저장소 → 404",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/analyses",
+            "body": { "mode": "raw", "raw": "{\n  \"repoUrl\": \"https://github.com/this-org-does-not-exist-0x7f/nope\"\n}" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 REPO_NOT_ACCESSIBLE (GitHub 한도에 걸렸으면 429)', () => {",
+                  "  const e = pm.response.json().error;",
+                  "  if (pm.response.code === 429) return pm.expect(e.code).to.eql('GITHUB_RATE_LIMITED');",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(e.code).to.eql('REPO_NOT_ACCESSIBLE');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "없는 분석 → 404",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/analyses/an_0000000000000000" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 ANALYSIS_NOT_FOUND', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('ANALYSIS_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "없는 경로 → 404",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/nope" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 NOT_FOUND', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "공급자 상태",
+      "item": [
+        {
+          "name": "Supabase 공개 상태",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/providers/supabase/status" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 공식 상태 또는 502 상태 확인 불가', () => {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 502]);",
+                  "  const body = pm.response.json();",
+                  "  if (pm.response.code === 502) return pm.expect(body.error.code).to.eql('STATUS_UNAVAILABLE');",
+                  "  pm.expect(body.providerId).to.eql('supabase');",
+                  "  pm.expect(body.state).to.be.oneOf(['operational', 'degraded', 'outage', 'maintenance', 'unknown']);",
+                  "  pm.expect(new Date(body.fetchedAt).toString()).to.not.eql('Invalid Date');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Stripe → 실시간 연동 전 (404)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/providers/stripe/status" },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 STATUS_NOT_SUPPORTED', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().error.code).to.eql('STATUS_NOT_SUPPORTED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "데모 재현 이벤트",
+      "request": { "method": "GET", "url": "{{baseUrl}}/api/demo-events/current" },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Stripe 503 재현 데이터', () => {",
+              "  pm.response.to.have.status(200);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.providerId).to.eql('stripe');",
+              "  pm.expect(body.httpStatus).to.eql(503);",
+              "  pm.expect(body.title).to.be.a('string');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
