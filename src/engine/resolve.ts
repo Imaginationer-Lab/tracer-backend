@@ -362,7 +362,7 @@ export function resolveFile(path: string, facts: FileFacts, ctx: ResolveContext,
     const urlPath = o?.type === 'provider' ? o.path : undefined;
     const callee = call.callee.replace(/^(?:this|self)\./, '');
     const cf = providers.size || use?.kind === 'request' ? codeFacts(call) : undefined;
-    for (const [p, id] of providers) add(p, call.line, 'call', callee, { ruleId: id, facts: cf, role: roleFor(p, call.callee, r.qualified, urlPath) });
+    for (const [p, id] of providers) add(p, call.line, 'call', callee, { ruleId: id, facts: cf, role: roleFor(p, call.callee, r.qualified, urlPath), setup: call.isNew || undefined });
 
     if (!o || !use) continue;
     const loc = { path, line: call.line };

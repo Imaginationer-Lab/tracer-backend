@@ -4,12 +4,15 @@
 import { toAnalysisResult, toProviderDetail } from '../api/present.js';
 import type { AnalysisResult, ProviderDetail, ProviderId } from '../api/contract.js';
 import { analyze } from './analyze.js';
+import { applyClassifications, otherServices, type Classification } from './learn.js';
 import { PROVIDER_IDS, type Rule } from './rules.js';
 import type { AmbiguousItem, Location, RepoFile } from './types.js';
 
 export interface WorkerInput {
   files: RepoFile[];
   rules?: Rule[];
+  /** LLM 판정. 있으면 공급자 근거('llm')와 기타 서비스에 반영한다 */
+  classifications?: Classification[];
 }
 
 /** 저장소가 쓰는 공급자 엔드포인트 (host로 판정한 것만) */
@@ -28,9 +31,10 @@ export interface WorkerOutput {
   stats: { parsedFiles: number; sourceChars: number; rulesetVersion: string };
 }
 
-export default async function run({ files, rules }: WorkerInput): Promise<WorkerOutput> {
-  const r = await analyze(files, rules ? { rules } : {});
-  const result = toAnalysisResult(r);
+export default async function run({ files, rules, classifications }: WorkerInput): Promise<WorkerOutput> {
+  const raw = await analyze(files, rules ? { rules } : {});
+  const r = classifications?.length ? applyClassifications(raw, classifications) : raw;
+  const result = toAnalysisResult(r, classifications?.length ? otherServices(r.ambiguous, classifications) : []);
   const details: WorkerOutput['details'] = {};
   for (const id of PROVIDER_IDS) if (result.providers.some((p) => p.id === id)) details[id] = toProviderDetail(r, id);
 

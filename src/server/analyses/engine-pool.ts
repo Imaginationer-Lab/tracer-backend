@@ -3,6 +3,7 @@
 
 import { Inject, Injectable, type OnModuleDestroy } from '@nestjs/common';
 import { Piscina } from 'piscina';
+import type { Classification } from '../../engine/learn.js';
 import type { Rule } from '../../engine/rules.js';
 import type { RepoFile } from '../../engine/types.js';
 import type { WorkerInput, WorkerOutput } from '../../engine/worker.js';
@@ -28,9 +29,9 @@ export class EnginePool implements OnModuleDestroy {
     return this.pool.queueSize >= this.cfg.analyzerQueue;
   }
 
-  async run(files: RepoFile[], rules: Rule[]): Promise<WorkerOutput> {
+  async run(files: RepoFile[], rules: Rule[], classifications?: Classification[]): Promise<WorkerOutput> {
     try {
-      return await this.pool.run({ files, rules }, { signal: AbortSignal.timeout(this.cfg.analysisTimeoutMs) });
+      return await this.pool.run({ files, rules, ...(classifications ? { classifications } : {}) }, { signal: AbortSignal.timeout(this.cfg.analysisTimeoutMs) });
     } catch (err) {
       if ((err as Error).name === 'AbortError' || (err as Error).name === 'TimeoutError') {
         throw new ApiException('REPO_TOO_LARGE', { message: '분석 시간이 너무 오래 걸려서 중단했어요.' });

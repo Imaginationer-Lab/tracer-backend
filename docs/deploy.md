@@ -84,4 +84,7 @@ DATABASE_URL=postgres://<user>:<password>@<host>:5432/postgres
 | `TRUST_PROXY` | false | 앞단 프록시 단계 수. Cloudflare만 `1`, Cloudflare + 프론트 서버 `2` ("프록시와 TRUST_PROXY") |
 | `CORS_ORIGINS` | `http://localhost:9000,http://127.0.0.1:9000` | 브라우저 호출을 허용할 프론트 출처 (쉼표로 구분) |
 | `MAX_TARBALL_MB` · `MAX_REPO_FILES` | 50 · 20000 | 저장소 크기 상한 |
+| `ANTHROPIC_API_KEY` | 없음 | 있으면 규칙으로 못 푼 단서를 Claude로 분류한다 (docs/api.md "AI 판단"). 없으면 `otherServices`는 항상 빈 배열 |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | 분류에 쓰는 모델 |
+| `LLM_TIMEOUT_SECONDS` · `LLM_MAX_ITEMS` | 90 · 300 | 호출 시간 상한, 한 번에 보내는 단서 수 상한 (많이 쓰인 단서부터) |
 | `DEMO_EVENT_FILE` | `data/demo-event.json` | 데모 재현 이벤트 |

@@ -60,6 +60,14 @@ describe('TS 쇼핑몰 (디자인 예제)', () => {
     expect(send.facts?.errorHandling).toBe(true);
   });
 
+  it('대표 줄은 클라이언트 생성(new S3Client)이 아니라 실제 호출(s3.send)', async () => {
+    const r = await run('ts-shop');
+    expect(lines(at(r, 'aws-s3', 'src/storage/upload.ts'), 'call')).toEqual(expect.arrayContaining([3, 7]));
+    expect(toAnalysisResult(r).providers.find((p) => p.id === 'aws-s3')!.files).toContainEqual({ path: 'src/storage/upload.ts', line: 7 });
+    const detail = toProviderDetail(r, 'aws-s3').evidence.find((e) => e.path === 'src/storage/upload.ts')!;
+    expect([detail.line, detail.reason.label]).toEqual([7, 's3.send 호출']);
+  });
+
   it('Svelte <script> 와 SvelteKit $env 도 읽는다', async () => {
     const r = await run('ts-shop');
     const es = at(r, 'supabase', 'src/routes/+page.svelte');

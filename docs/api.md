@@ -38,7 +38,7 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
 ### `POST /api/analyses`
 
 ```json
-{ "repoUrl": "https://github.com/acme/demo-store" }
+{ "repoUrl": "https://github.com/Imaginationer-Lab/tracer-demo-store" }
 ```
 
 1. URL 형식 검사 (`https://github.com/{owner}/{repo}`, 앞뒤 공백 제거, `.git`·끝 슬래시 허용)
@@ -51,8 +51,8 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
 
 ```json
 // 202
-{ "id": "an_7f3k2", "status": "running",
-  "repo": { "owner": "acme", "name": "demo-store", "branch": "main", "commit": "a1c3f9e8b2d4..." },
+{ "id": "an_60f9b44155d4b902", "status": "running",
+  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "66eccdfa73f3acf459eccdfbe2f8f1f611fda514" },
   "steps": [ { "key": "repo", "state": "done" }, { "key": "files", "state": "running" }, { "key": "detect", "state": "pending" } ] }
 ```
 
@@ -62,32 +62,48 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
 
 ```json
 {
-  "id": "an_7f3k2",
+  "id": "an_60f9b44155d4b902",
   "status": "done",
-  "repo": { "owner": "acme", "name": "demo-store", "branch": "main", "commit": "a1c3f9e8b2d4..." },
+  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "66eccdfa73f3acf459eccdfbe2f8f1f611fda514" },
   "steps": [ { "key": "repo", "state": "done" }, { "key": "files", "state": "done" }, { "key": "detect", "state": "done" } ],
   "error": null,
   "result": {
     "providers": [
       { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
       { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 3 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" }
     ],
+    "otherServices": [],
     "files": [
+      { "path": "package.json", "state": "analyzed", "matches": [] },
+      { "path": "README.md", "state": "other" },
       { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
       { "path": "src/payments/checkout.ts", "state": "analyzed", "matches": [ { "provider": "stripe", "line": 2 } ] },
-      { "path": "src/legacy/bundle.min.js", "state": "skipped", "reason": "minified" },
-      { "path": "package.json", "state": "analyzed", "matches": [] },
-      { "path": "README.md", "state": "other" }
+      { "path": "src/storage/upload.ts", "state": "analyzed", "matches": [ { "provider": "aws-s3", "line": 6 } ] }
     ],
-    "summary": { "analyzed": 4, "skipped": 1 }
+    "summary": { "analyzed": 4, "skipped": 0 }
   }
 }
 ```
 
 - `files`는 무시 폴더(`node_modules`, `dist` 등)를 뺀 저장소 경로 전체다. 프론트가 트리를 만들고 `matches`가 있는 파일의 상위 폴더를 펼친다. 경로가 5,000개를 넘으면 `analyzed`·`skipped`만 준다.
 - `state`: `analyzed`(읽고 분석함) · `skipped`(분석 대상인데 못 읽음: `too-large` · `minified` · `parse-error`) · `other`(분석 대상 아님, README 등)
+- `otherServices`: 세 공급자 밖의 외부 서비스. 아래 "AI 판단" 참고. 예제 저장소에는 없다.
 - 분석 도중 실패(tarball 다운로드 실패 등)하면 `status: "failed"`이고 `error`는 아래 오류 형식과 같다.
+
+### AI 판단 (Claude)
+
+규칙으로 못 푼 단서(모르는 host, 의존성, 주소를 못 푼 HTTP 호출)는 분석 뒤 Claude에 한 번에 물어 분류한다. 서버에 `ANTHROPIC_API_KEY`가 있을 때만 켜진다.
+
+- 보내는 것: 단서 자체(host, 패키지 이름, 호출식과 주소 힌트)만. 파일 경로·줄 번호·코드 전문은 보내지 않는다.
+- 판정은 `clue_classifications`에 저장해서 다른 저장소에서 같은 단서가 나오면 다시 묻지 않는다.
+- 판정 결과
+  - 세 공급자 중 하나: 그 공급자 근거에 `reason.kind: "llm"`, 문구 `AI 판단 · …`으로 들어간다.
+  - 다른 서비스: `result.otherServices`에 서비스 이름별로 모은다 (`name`, `clues`, `fileCount`, `files`).
+  - 자체 백엔드·판단 불가: 버린다.
+- 답은 형식 검증을 통과한 것만 쓴다 (모르는 id·공급자, 60자 넘는 이름 등은 버림). 실패·시간 초과면 규칙 결과만으로 분석을 끝낸다.
+- 실측 (`JeongWon-CHO/Ohaasa`, `claude-opus-5-5` effort low): 단서 35개, 5.3초, 토큰 입력 1,616 · 출력 679.
+- AI를 켜거나 모델을 바꾸면 캐시 키(`ruleset_version`)가 바뀌어 같은 커밋도 다시 분석한다.
 
 ### `GET /api/analyses/:id/providers/:providerId`
 
@@ -103,7 +119,7 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
       "language": "typescript",
       "reason": { "kind": "http", "label": "api.stripe.com 호출" },
       "snippet": { "startLine": 1, "lines": [
-        "export function startCheckout(params: URLSearchParams) {",
+        "export function startCheckout(params: URLSearchParams): Promise<Response> {",
         "  return fetch('https://api.stripe.com/v1/checkout/sessions', {",
         "    method: 'POST',", "    headers: {", "      Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`," ] },
       "facts": { "errorHandling": false, "retry": false, "timeout": false, "statusCheck": false },

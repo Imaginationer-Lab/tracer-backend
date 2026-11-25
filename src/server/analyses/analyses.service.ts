@@ -7,11 +7,13 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { Analysis, ProviderDetail, ProviderId, StepKey, StepState } from '../../api/contract.js';
 import { BUILTIN_RULES, PROVIDER_IDS, PROVIDERS, rulesetVersion, type Rule } from '../../engine/rules.js';
+import type { WorkerOutput } from '../../engine/worker.js';
 import { APP_CONFIG, type AppConfig } from '../config.js';
 import { AnalysisRepository, type AnalysisRecord } from '../db/analysis.repository.js';
 import { ApiException, ERRORS } from '../errors.js';
 import { GitHubClient, parseRepoUrl } from '../github/github.client.js';
 import { extractRepoFiles } from '../github/tarball.js';
+import { ClueClassifier } from '../llm/clue-classifier.js';
 import { EnginePool } from './engine-pool.js';
 import { RateLimiter } from './rate-limiter.js';
 
@@ -37,6 +39,7 @@ export class AnalysesService implements OnModuleInit {
     private readonly github: GitHubClient,
     private readonly pool: EnginePool,
     private readonly limiter: RateLimiter,
+    private readonly classifier: ClueClassifier,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -94,9 +97,16 @@ export class AnalysesService implements OnModuleInit {
       const files = await extractRepoFiles(tarball, { maxFiles: this.cfg.maxRepoFiles, maxBytes: this.cfg.maxTarballBytes * 8 });
       current = 'detect';
       await this.repo.updateSteps(id, steps('done', 'done', 'running'));
-      const out = await this.pool.run(files, rules);
+      let out: WorkerOutput = await this.pool.run(files, rules);
+      const classifications = await this.classifier.classify(out.ambiguous);
+      // 판정이 결과를 바꿀 때만 한 번 더 돌린다 (엔진은 결정적이라 후보 id가 그대로다)
+      if (classifications.some((c) => c.provider === 'other' || PROVIDER_IDS.includes(c.provider as ProviderId))) {
+        out = await this.pool.run(files, rules, classifications);
+      }
       await this.repo.markDone(id, steps('done', 'done', 'done'), out);
-      this.logger.log(`${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 완료: 파일 ${files.length}개, 파싱 ${out.stats.parsedFiles}개, 애매 후보 ${out.ambiguous.length}개`);
+      this.logger.log(
+        `${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 완료: 파일 ${files.length}개, 파싱 ${out.stats.parsedFiles}개, 애매 후보 ${out.ambiguous.length}개, 기타 서비스 ${out.result.otherServices.length}개`,
+      );
     } catch (err) {
       const apiError = err instanceof ApiException ? err : new ApiException('INTERNAL_ERROR');
       if (!(err instanceof ApiException)) this.logger.error(`분석 실패 ${id}`, err instanceof Error ? err.stack : String(err));
@@ -113,7 +123,7 @@ export class AnalysesService implements OnModuleInit {
     if (!this.rules || Date.now() - this.rules.loadedAt > RULES_TTL_MS) {
       const learned = await this.repo.loadLearnedRules();
       const list = [...BUILTIN_RULES, ...learned];
-      this.rules = { list, version: rulesetVersion(list), loadedAt: Date.now() };
+      this.rules = { list, version: rulesetVersion(list) + this.classifier.versionTag, loadedAt: Date.now() };
     }
     return this.rules;
   }
