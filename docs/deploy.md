@@ -56,7 +56,7 @@ docker compose exec -T db pg_dump -U outage -d outage_map | gzip > outage_map-$(
 
 - **실제 단계 수와 정확히 같아야 한다.** 작으면 프록시 IP로 세서 모두가 한도를 나눠 쓰고, 크면 사용자가 `X-Forwarded-For`를 꾸며 다른 IP인 척하며 요청 제한을 우회할 수 있다.
 - 중간 프록시(프론트 서버 포함)가 `X-Forwarded-For`를 **이어 붙여서** 넘겨야 한다. 프론트 서버가 서버 쪽에서 새로 요청을 만들면(헤더를 안 넘기면) 단계 수와 상관없이 사용자 IP를 알 수 없다.
-- 백엔드는 프록시를 거쳐서만 들어오게 막는다. 인터넷에서 바로 접속되면 누구나 헤더를 꾸며 보낼 수 있다.
+- 백엔드는 프록시를 거쳐서만 들어오게 막는다. 인터넷에서 바로 접속되면 누구나 헤더를 꾸며 보낼 수 있다. compose는 api 포트를 `127.0.0.1`에만 연다.
 - 배포 후에 실제 요청에서 백엔드가 보는 IP를 찍어 보고 단계 수를 확인한다.
 
 ## 관리형 Postgres로 옮기기 (선택)
@@ -73,6 +73,7 @@ DATABASE_URL=postgres://<user>:<password>@<host>:5432/postgres
 
 | 이름 | 기본값 | 설명 |
 |---|---|---|
+| `API_HOST_PORT` | 3000 | 호스트에서 여는 포트. `127.0.0.1`에만 묶여서 밖에서는 바로 접속할 수 없다 |
 | `DATABASE_URL` | compose의 로컬 Postgres | `postgres://user:pass@host:5432/db` |
 | `POSTGRES_PASSWORD` | `outage-local-only` | compose `db` 비밀번호. 서버에서는 반드시 바꾼다 |
 | `GITHUB_TOKEN` | 없음 | 권한 없는 토큰으로 충분. 없으면 시간당 60회 |

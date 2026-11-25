@@ -11,8 +11,9 @@ services:
     build:
       context: .
       target: runtime
+    # 이 컴퓨터(127.0.0.1)에서만 열린다. 밖에서는 프록시(Cloudflare 터널·프론트 서버)를 거쳐서만 들어온다
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${API_HOST_PORT:-3000}:3000"
     env_file:
       - path: .env
         required: false
