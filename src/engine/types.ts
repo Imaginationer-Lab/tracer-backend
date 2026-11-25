@@ -50,6 +50,8 @@ export interface EngineResult {
     analyzed: number;
     skipped: number;
     sourceChars: number;
+    /** 사전 필터를 통과해 실제로 파싱한 파일 수 */
+    parsedFiles: number;
     rulesetVersion: string;
   };
 }
