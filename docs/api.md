@@ -157,11 +157,19 @@ FEAT-004. 서버에 들어 있는 재현 데이터 한 건을 검증해서 돌�
 | `STATUS_NOT_SUPPORTED` | 404 | 실시간 연동 전 (`statusSupport: none`인 공급자) | - |
 | `STATUS_UNAVAILABLE` | 502 | 상태 확인 불가 · 다시 조회 | 있음 |
 | `DEMO_EVENT_INVALID` | 500 | 데모 이벤트를 불러오지 못했어요 | 재현 끄기 |
+| `ORIGIN_NOT_ALLOWED` | 403 | (프론트가 아닌 사이트에서 브라우저로 호출) | - |
 | `BAD_REQUEST` · `NOT_FOUND` · `INTERNAL_ERROR` | 400 · 404 · 500 | 공통 | `INTERNAL_ERROR`만 있음 |
 
 GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 404) · `403`/`429`에 `x-ratelimit-remaining: 0` → `GITHUB_RATE_LIMITED` (`x-ratelimit-reset`으로 `resetAt`) · `5xx`/네트워크 오류 → `GITHUB_UNAVAILABLE`
 
 **비공개 저장소는 서버 토큰으로 보이더라도 거부한다** (`private: true` → `REPO_NOT_ACCESSIBLE`). 서버 토큰의 권한으로 남의 비공개 코드가 분석되지 않게 하기 위해서다.
+
+## 브라우저 호출 출처 (CORS)
+
+- 브라우저에서 API를 부를 수 있는 곳은 프론트뿐이다. 기본값 `http://localhost:9100` (`127.0.0.1:9100` 포함), `CORS_ORIGINS`(쉼표로 구분)로 바꾼다.
+- 허용 출처에는 CORS 헤더를 붙인다: `GET`·`POST`, `Content-Type`, `Retry-After` 노출, 프리플라이트 캐시 600초.
+- 다른 출처에서 온 요청(`Origin` 헤더가 있고 목록에 없음)은 프리플라이트를 포함해 `403 ORIGIN_NOT_ALLOWED`로 막는다. 다른 사이트가 방문자의 브라우저로 분석을 돌리지 못하게 하기 위해서다.
+- `Origin` 헤더가 없는 요청(curl, Postman, 서버 간 호출, 헬스체크)은 브라우저의 교차 출처 요청이 아니므로 통과한다. CORS는 브라우저 규칙이라, 이런 요청까지 막으려면 인증이나 네트워크 제한이 따로 필요하다.
 
 ## 요청 제한
 
