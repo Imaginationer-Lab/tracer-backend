@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: |
     공개 GitHub 저장소가 쓰는 외부 서비스(Supabase·Stripe·Amazon S3)와 호출 위치를 찾는다.
-    브라우저 호출은 http://localhost:9100 (CORS_ORIGINS)에서만 허용된다. 인증 없음.
+    브라우저 호출은 http://localhost:9000 (CORS_ORIGINS)에서만 허용된다. 인증 없음.
     사람용 설명은 docs/frontend-handoff.md, docs/api.md.
 # 인증 없음 (로그인·세션 없는 공개 서비스)
 security: []

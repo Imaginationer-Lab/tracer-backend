@@ -14,7 +14,7 @@
 | 항목 | 값 |
 |---|---|
 | Base URL | `http://localhost:3000/api` |
-| 프론트 출처 | **`http://localhost:9100`에서만** 브라우저 호출 허용 (CORS). 다른 출처는 `403 ORIGIN_NOT_ALLOWED` |
+| 프론트 출처 | **`http://localhost:9000`에서만** 브라우저 호출 허용 (CORS). 다른 출처는 `403 ORIGIN_NOT_ALLOWED` |
 | 인증 | 없음 (로그인·세션 없음) |
 | 형식 | 요청·응답 모두 JSON. 요청은 `Content-Type: application/json` |
 | 시간 | ISO 8601 UTC 문자열 (`2026-11-25T01:00:00.000Z`). 화면에는 KST로 바꿔 표시 |
@@ -296,7 +296,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | `STATUS_UNAVAILABLE` | 502 | 상태 API 실패 | 그 공급자에만 "상태 확인 불가 · 다시 조회" |
 | `STATUS_NOT_SUPPORTED` | 404 | 연동 전 공급자 | 부르지 않는다 ("실시간 연동 전") |
 | `DEMO_EVENT_INVALID` | 500 | 재현 데이터 이상 | "데모 이벤트를 불러오지 못했어요" + 재현 끄기 |
-| `ORIGIN_NOT_ALLOWED` | 403 | 9100이 아닌 출처 | 개발 설정 문제 (프론트 포트 확인) |
+| `ORIGIN_NOT_ALLOWED` | 403 | 9000이 아닌 출처 | 개발 설정 문제 (프론트 포트 확인) |
 | `INTERNAL_ERROR` | 500 | 서버 오류 | 일반 오류 + 다시 시도 |
 
 - `error.retryable`이 `true`일 때만 "다시 시도" 버튼을 보인다.
@@ -384,7 +384,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 - 응답 JSON의 키 순서는 보장하지 않는다 (DB가 정렬을 바꿀 수 있음).
 - `snippet.lines`에는 탭과 공백이 원문 그대로 들어 있다. 줄바꿈 없이 줄 단위로 렌더링한다.
 - 경로 구분자는 항상 `/`, 저장소 루트 기준이다. 줄 번호는 1부터 센다.
-- 브라우저에서는 반드시 `http://localhost:9100`에서 띄운다 (`127.0.0.1:9100`도 허용). 다른 포트는 403이다.
+- 브라우저에서는 반드시 `http://localhost:9000`에서 띄운다 (`127.0.0.1:9000`도 허용). 다른 포트는 403이다.
 - Postman 컬렉션 `postman/outage-map.postman_collection.json`으로 실제 응답을 바로 볼 수 있다.
 
 ## 9. 프론트 타입으로 바꾸기 (어댑터)

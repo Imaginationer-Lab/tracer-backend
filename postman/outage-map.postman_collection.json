@@ -357,13 +357,13 @@
       ]
     },
     {
-      "name": "CORS (프론트 localhost:9100만)",
+      "name": "CORS (프론트 localhost:9000만)",
       "item": [
         {
-          "name": "9100에서 온 요청 → CORS 헤더",
+          "name": "9000에서 온 요청 → CORS 헤더",
           "request": {
             "method": "GET",
-            "header": [{ "key": "Origin", "value": "http://localhost:9100" }],
+            "header": [{ "key": "Origin", "value": "http://localhost:9000" }],
             "url": "{{baseUrl}}/api/health"
           },
           "event": [
@@ -372,9 +372,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200, Access-Control-Allow-Origin: http://localhost:9100', () => {",
+                  "pm.test('200, Access-Control-Allow-Origin: http://localhost:9000', () => {",
                   "  pm.response.to.have.status(200);",
-                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:9100');",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:9000');",
                   "});"
                 ]
               }
@@ -382,11 +382,11 @@
           ]
         },
         {
-          "name": "9100의 프리플라이트 → 통과",
+          "name": "9000의 프리플라이트 → 통과",
           "request": {
             "method": "OPTIONS",
             "header": [
-              { "key": "Origin", "value": "http://localhost:9100" },
+              { "key": "Origin", "value": "http://localhost:9000" },
               { "key": "Access-Control-Request-Method", "value": "POST" },
               { "key": "Access-Control-Request-Headers", "value": "content-type" }
             ],
@@ -400,7 +400,7 @@
                 "exec": [
                   "pm.test('204, POST·Content-Type 허용', () => {",
                   "  pm.response.to.have.status(204);",
-                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:9100');",
+                  "  pm.expect(pm.response.headers.get('Access-Control-Allow-Origin')).to.eql('http://localhost:9000');",
                   "  pm.expect(pm.response.headers.get('Access-Control-Allow-Methods')).to.include('POST');",
                   "  pm.expect(pm.response.headers.get('Access-Control-Allow-Headers').toLowerCase()).to.include('content-type');",
                   "});"
