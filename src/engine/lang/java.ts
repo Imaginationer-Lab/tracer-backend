@@ -131,6 +131,11 @@ export const javaHooks: Hooks = {
 
   setting(n) {
     if (n.type === 'annotation') return annotationSetting(n);
+    // "${partner.shipping-url}" 같은 Spring 자리표시자 문자열
+    if (n.type === 'string_literal') {
+      const m = /^\$\{([^:}]+)(?::[^}]*)?\}$/.exec(stringValue(n) ?? '');
+      return m ? m[1]! : null;
+    }
     if (n.type === 'method_invocation') {
       const callee = `${field(n, 'object')?.text ?? ''}.${field(n, 'name')?.text ?? ''}`;
       if (callee === 'System.getenv' || /\.getProperty$/.test(callee) || /\.getRequiredProperty$/.test(callee)) {
