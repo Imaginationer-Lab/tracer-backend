@@ -1,14 +1,15 @@
 // 분석 요청 흐름
 //   POST: URL 검사 → GitHub에서 저장소·커밋 확인(동기) → 캐시(저장소+커밋+규칙 버전) 확인
 //         → 없으면 트리로 받을 파일을 정함(동기, 너무 크면 여기서 413) → IP 토큰 사용 → 작업 생성(202)
-//         → 백그라운드에서 파일 받기(tarball 또는 필요한 파일만) → 엔진 → AI 분류 → 저장
+//         → 백그라운드에서 파일 받기(tarball 또는 필요한 파일만)
+//         → 엔진 1차(규칙 없이 후보 모으기) → AI 판정 → 판정으로 만든 규칙으로 엔진 2차 → 저장
 //   캐시 적중, 형식 오류, 크기 초과, GitHub 오류는 IP 토큰을 쓰지 않는다.
 
 import { randomBytes } from 'node:crypto';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import type { Analysis, ProviderDetail, ProviderId, StepKey, StepState } from '../../api/contract.js';
-import { BUILTIN_RULES, PROVIDER_IDS, PROVIDERS, rulesetVersion, type Rule } from '../../engine/rules.js';
-import type { WorkerOutput } from '../../engine/worker.js';
+import { rulesFromJudgments } from '../../engine/learn.js';
+import { ENGINE_VERSION, SERVICE_ID } from '../../engine/rules.js';
 import { AnalysisRepository, type AnalysisRecord } from '../db/analysis.repository.js';
 import { ApiException, ERRORS } from '../errors.js';
 import { GitHubClient, parseRepoUrl } from '../github/github.client.js';
@@ -16,8 +17,6 @@ import { RepoLoader, type LoadPlan } from '../github/repo-loader.js';
 import { ClueClassifier } from '../llm/clue-classifier.js';
 import { EnginePool } from './engine-pool.js';
 import { RateLimiter } from './rate-limiter.js';
-
-const RULES_TTL_MS = 60_000;
 
 const steps = (repo: StepState, files: StepState, detect: StepState): Analysis['steps'] => [
   { key: 'repo', state: repo },
@@ -31,7 +30,6 @@ const toAnalysis = ({ rulesetVersion: _v, details: _d, ambiguous: _a, ...a }: An
 @Injectable()
 export class AnalysesService implements OnModuleInit {
   private readonly logger = new Logger('Analyses');
-  private rules: { list: Rule[]; version: string; loadedAt: number } | null = null;
 
   constructor(
     private readonly repo: AnalysisRepository,
@@ -50,9 +48,9 @@ export class AnalysesService implements OnModuleInit {
   async create(repoUrl: unknown, ip: string): Promise<{ analysis: Analysis; created: boolean }> {
     const { owner, name } = parseRepoUrl(repoUrl);
     const ref = await this.github.resolveRepo(owner, name);
-    const rules = await this.currentRules();
+    const version = this.version;
 
-    const cached = await this.repo.findByCommit(ref, rules.version);
+    const cached = await this.repo.findByCommit(ref, version);
     if (cached && cached.status !== 'failed') return { analysis: toAnalysis(cached), created: false };
 
     if (this.pool.busy) throw new ApiException('RATE_LIMITED', { retryAfter: 30 });
@@ -62,16 +60,16 @@ export class AnalysesService implements OnModuleInit {
 
     const id = `an_${randomBytes(8).toString('hex')}`;
     const initial = steps('done', 'running', 'pending');
-    const inserted = await this.repo.insertRunning(id, ref, rules.version, initial);
+    const inserted = await this.repo.insertRunning(id, ref, version, initial);
     if (!inserted) {
       // 같은 커밋을 다른 요청이 방금 시작했다: 그 분석을 돌려준다
       this.limiter.refund(ip);
-      const other = await this.repo.findByCommit(ref, rules.version);
+      const other = await this.repo.findByCommit(ref, version);
       if (other) return { analysis: toAnalysis(other), created: false };
       throw new ApiException('INTERNAL_ERROR');
     }
 
-    void this.run(id, ref, rules.list, plan);
+    void this.run(id, ref, plan);
     return { analysis: { id, status: 'running', repo: ref, steps: initial, error: null, result: null }, created: true };
   }
 
@@ -81,17 +79,19 @@ export class AnalysesService implements OnModuleInit {
     return toAnalysis(record);
   }
 
+  /** 이 분석 결과에 있는 서비스만. 없으면 PROVIDER_NOT_FOUND */
   async providerDetail(id: string, providerId: string): Promise<ProviderDetail> {
-    if (!PROVIDER_IDS.includes(providerId as ProviderId)) throw new ApiException('PROVIDER_NOT_FOUND');
+    if (!SERVICE_ID.test(providerId)) throw new ApiException('PROVIDER_NOT_FOUND');
     const record = await this.repo.findById(id);
     if (!record) throw new ApiException('ANALYSIS_NOT_FOUND');
     if (record.status === 'failed' && record.error) throw ApiException.fromJSON(record.error);
     if (record.status !== 'done') throw new ApiException('ANALYSIS_NOT_READY');
-    const p = PROVIDERS[providerId as ProviderId];
-    return record.details?.[providerId as ProviderId] ?? { provider: { id: p.id, name: p.name, statusPageUrl: p.statusPageUrl }, evidence: [] };
+    const detail = record.details && Object.hasOwn(record.details, providerId) ? record.details[providerId as ProviderId] : undefined;
+    if (!detail) throw new ApiException('PROVIDER_NOT_FOUND');
+    return detail;
   }
 
-  private async run(id: string, ref: Analysis['repo'], rules: Rule[], plan: LoadPlan): Promise<void> {
+  private async run(id: string, ref: Analysis['repo'], plan: LoadPlan): Promise<void> {
     let current: StepKey = 'files';
     try {
       const t0 = Date.now();
@@ -100,15 +100,16 @@ export class AnalysesService implements OnModuleInit {
       this.logger.log(`${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 파일 받음: ${how}, ${Date.now() - t0}ms`);
       current = 'detect';
       await this.repo.updateSteps(id, steps('done', 'done', 'running'));
-      let out: WorkerOutput = await this.pool.run(files, rules);
-      const classifications = await this.classifier.classify(out.ambiguous);
-      // 판정이 결과를 바꿀 때만 한 번 더 돌린다 (엔진은 결정적이라 후보 id가 그대로다)
-      if (classifications.some((c) => c.provider === 'other' || PROVIDER_IDS.includes(c.provider as ProviderId))) {
-        out = await this.pool.run(files, rules, classifications);
-      }
+      // 1차: 규칙 없이 후보(의존성·호스트·HTTP 호출)만 모은다
+      const candidates = await this.pool.run(files);
+      // AI 판정 (저장된 판정은 다시 묻지 않음). 처음 보는 후보를 판정하지 못하면 DETECTION_UNAVAILABLE
+      const judgments = await this.classifier.judge(candidates.ambiguous);
+      const detection = rulesFromJudgments(candidates.ambiguous, judgments);
+      // 2차: 판정으로 만든 규칙으로 줄 번호·호출 추적·코드 사실을 찾는다
+      const out = detection.rules.length || detection.direct.length ? await this.pool.run(files, detection) : candidates;
       await this.repo.markDone(id, steps('done', 'done', 'done'), out);
       this.logger.log(
-        `${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 완료: 파일 ${files.length}개, 파싱 ${out.stats.parsedFiles}개, 애매 후보 ${out.ambiguous.length}개, 기타 서비스 ${out.result.otherServices.length}개`,
+        `${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 완료: 파일 ${files.length}개, 파싱 ${out.stats.parsedFiles}개, 후보 ${candidates.ambiguous.length}개, 서비스 ${out.result.providers.length}개 (규칙 ${detection.rules.length}개)`,
       );
     } catch (err) {
       const apiError = err instanceof ApiException ? err : new ApiException('INTERNAL_ERROR');
@@ -121,13 +122,8 @@ export class AnalysesService implements OnModuleInit {
     }
   }
 
-  /** 내장 규칙 + DB에 쌓인 학습 규칙. 규칙 버전이 캐시 키에 들어간다 */
-  private async currentRules(): Promise<{ list: Rule[]; version: string }> {
-    if (!this.rules || Date.now() - this.rules.loadedAt > RULES_TTL_MS) {
-      const learned = await this.repo.loadLearnedRules();
-      const list = [...BUILTIN_RULES, ...learned];
-      this.rules = { list, version: rulesetVersion(list) + this.classifier.versionTag, loadedAt: Date.now() };
-    }
-    return this.rules;
+  /** 분석 캐시 키: 엔진 버전 + 판정 방식(모델·프롬프트 버전). 바뀌면 같은 커밋도 다시 분석한다 */
+  private get version(): string {
+    return `e${ENGINE_VERSION}${this.classifier.versionTag}`;
   }
 }

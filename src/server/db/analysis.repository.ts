@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import pg from 'pg';
 import type { Analysis, ApiError, ProviderDetail, ProviderId, RepoRef } from '../../api/contract.js';
 import type { AmbiguousItem } from '../../engine/types.js';
-import { validateRule, type Rule } from '../../engine/rules.js';
+import type { Verdict } from '../../engine/learn.js';
 import type { EndpointUse, WorkerOutput } from '../../engine/worker.js';
 import { DB_POOL } from './database.module.js';
 
@@ -38,11 +38,6 @@ const toRecord = (r: AnalysisRow): AnalysisRecord => ({
   details: r.details,
   ambiguous: r.ambiguous,
 });
-
-export interface StoredClassification {
-  provider: string;
-  service: string | null;
-}
 
 /**
  * pg는 JS 배열을 Postgres 배열로 바꿔서 보내므로, jsonb에 넣을 값은 직접 JSON 문자열로 만들고 SQL에서 ::jsonb로 받는다.
@@ -133,32 +128,34 @@ export class AnalysisRepository {
     return rowCount ?? 0;
   }
 
-  /** 단서 키로 저장된 LLM 판정. 찾은 단서는 hits를 올린다 */
-  async findClassifications(keys: string[]): Promise<Map<string, StoredClassification>> {
+  /** 단서 키로 저장된 AI 판정. 찾은 단서는 hits를 올린다 */
+  async findJudgments(keys: string[]): Promise<Map<string, Verdict>> {
     if (!keys.length) return new Map();
-    const { rows } = await this.pool.query<{ clue_key: string; provider: string; service: string | null }>(
-      `UPDATE clue_classifications SET hits = hits + 1 WHERE clue_key = ANY($1::text[]) RETURNING clue_key, provider, service`,
+    const { rows } = await this.pool.query<{ clue_key: string; judgment: Verdict }>(
+      `UPDATE clue_classifications SET hits = hits + 1 WHERE clue_key = ANY($1::text[]) AND judgment IS NOT NULL RETURNING clue_key, judgment`,
       [keys],
     );
-    return new Map(rows.map((r) => [r.clue_key, { provider: r.provider, service: r.service }]));
+    return new Map(rows.map((r) => [r.clue_key, r.judgment]));
   }
 
-  async saveClassifications(rows: (StoredClassification & { key: string; kind: AmbiguousItem['kind']; model: string })[]): Promise<void> {
+  async saveJudgments(rows: { key: string; kind: AmbiguousItem['kind']; verdict: Verdict; model: string }[]): Promise<void> {
     if (!rows.length) return;
+    const provider = (v: Verdict) => (v.verdict === 'service' ? v.service.id : v.verdict);
+    const service = (v: Verdict) => (v.verdict === 'service' ? v.service.name : null);
     await this.pool.query(
-      `INSERT INTO clue_classifications (clue_key, kind, provider, service, model, hits)
-       SELECT * , 1 FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+      `INSERT INTO clue_classifications (clue_key, kind, provider, service, model, judgment, hits)
+       SELECT k, kind, provider, service, model, judgment::jsonb, 1
+       FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[]) AS t(k, kind, provider, service, model, judgment)
        ON CONFLICT (clue_key) DO NOTHING`,
-      [rows.map((r) => r.key), rows.map((r) => r.kind), rows.map((r) => r.provider), rows.map((r) => r.service), rows.map((r) => r.model)],
+      [
+        rows.map((r) => r.key),
+        rows.map((r) => r.kind),
+        rows.map((r) => provider(r.verdict)),
+        rows.map((r) => service(r.verdict)),
+        rows.map((r) => r.model),
+        rows.map((r) => JSON.stringify(r.verdict)),
+      ],
     );
-  }
-
-  async loadLearnedRules(): Promise<Rule[]> {
-    const { rows } = await this.pool.query<{ rule: unknown }>('SELECT rule FROM learned_rules ORDER BY id');
-    return rows.flatMap((r) => {
-      const v = validateRule(r.rule);
-      return v.ok ? [v.rule] : [];
-    });
   }
 
   /**

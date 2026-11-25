@@ -3,7 +3,7 @@
 
 import { Injectable } from '@nestjs/common';
 import type { ProviderId, ProviderStatus } from '../../api/contract.js';
-import { PROVIDER_IDS, PROVIDERS } from '../../engine/rules.js';
+import { KNOWN_SERVICES, SERVICE_ID } from '../../engine/rules.js';
 import { ApiException } from '../errors.js';
 
 const CACHE_MS = 60_000;
@@ -21,9 +21,10 @@ export class StatusService {
   private readonly cache = new Map<ProviderId, { value: ProviderStatus; expires: number }>();
 
   async get(providerId: string): Promise<ProviderStatus> {
-    if (!PROVIDER_IDS.includes(providerId as ProviderId)) throw new ApiException('PROVIDER_NOT_FOUND');
+    if (!SERVICE_ID.test(providerId)) throw new ApiException('PROVIDER_NOT_FOUND');
     const id = providerId as ProviderId;
-    const api = PROVIDERS[id].statusApi;
+    // 공개 상태 API를 붙인 서비스만 (지금은 Supabase). 나머지는 "실시간 연동 전"
+    const api = Object.hasOwn(KNOWN_SERVICES, id) ? KNOWN_SERVICES[id]!.statusApi : undefined;
     if (!api) throw new ApiException('STATUS_NOT_SUPPORTED');
 
     const hit = this.cache.get(id);

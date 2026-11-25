@@ -20,8 +20,10 @@ export interface AppConfig {
   maxSourceBytes: number;
   /** 브라우저에서 API를 부를 수 있는 출처 (프론트) */
   corsOrigins: string[];
-  /** 규칙으로 못 푼 단서를 Claude로 분류. 키가 없으면 끈다 */
+  /** 외부 서비스 판정에 쓰는 Claude. 키가 없으면 저장된 판정만 쓴다 (처음 보는 후보가 있으면 DETECTION_UNAVAILABLE) */
   llm: { apiKey: string; model: string; timeoutMs: number; maxItems: number } | null;
+  /** 테스트용 고정 판정 파일. 있으면 AI·DB 대신 이것만 쓴다 */
+  clueFixtureFile: string | null;
 }
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:9000', 'http://127.0.0.1:9000'];
@@ -71,8 +73,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
           apiKey: env.ANTHROPIC_API_KEY,
           model: env.CLAUDE_MODEL || 'claude-opus-5-5',
           timeoutMs: int(env, 'LLM_TIMEOUT_SECONDS', 90) * 1000,
-          maxItems: int(env, 'LLM_MAX_ITEMS', 300),
+          maxItems: int(env, 'LLM_MAX_ITEMS', 600),
         }
       : null,
+    clueFixtureFile: env.CLUE_FIXTURE_FILE || null,
   };
 }
