@@ -1,0 +1,312 @@
+openapi: 3.1.0
+info:
+  title: 장애 지도 API
+  version: 0.1.0
+  description: |
+    공개 GitHub 저장소가 쓰는 외부 서비스(Supabase·Stripe·Amazon S3)와 호출 위치를 찾는다.
+    브라우저 호출은 http://localhost:9100 (CORS_ORIGINS)에서만 허용된다. 인증 없음.
+    사람용 설명은 docs/frontend-handoff.md, docs/api.md.
+# 인증 없음 (로그인·세션 없는 공개 서비스)
+security: []
+
+servers:
+  - url: http://localhost:3000/api
+    description: 로컬 (docker compose up -d --build)
+
+paths:
+  /analyses:
+    post:
+      summary: 분석 시작
+      description: |
+        GitHub 저장소·커밋 확인은 동기로 하고, 분석은 백그라운드에서 한다.
+        같은 커밋 결과가 있으면 200으로 그대로 돌려준다 (요청 제한 토큰을 쓰지 않음).
+      operationId: createAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repoUrl]
+              properties:
+                repoUrl:
+                  type: string
+                  pattern: '^\s*https://github\.com/[A-Za-z0-9-]{1,39}/[A-Za-z0-9._-]{1,100}(\.git)?(/.*)?\s*$'
+                  examples: ['https://github.com/acme/demo-store']
+      responses:
+        '202': { description: 새 분석 시작 (status=running), content: { application/json: { schema: { $ref: '#/components/schemas/Analysis' } } } }
+        '200': { description: 같은 커밋 결과 (status=done), content: { application/json: { schema: { $ref: '#/components/schemas/Analysis' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '429':
+          description: GITHUB_RATE_LIMITED(resetAt) 또는 RATE_LIMITED(retryAfter)
+          headers:
+            Retry-After: { schema: { type: integer }, description: RATE_LIMITED일 때 남은 초 }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } }
+        '502': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}:
+    get:
+      summary: 분석 상태·결과 (1초 간격 폴링)
+      operationId: getAnalysis
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^an_[0-9a-f]{16}$' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Analysis' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /analyses/{id}/providers/{providerId}:
+    get:
+      summary: 공급자 근거 (스니펫·코드 사실·엔드포인트)
+      description: 결과에 없는 공급자면 evidence가 빈 배열. 분석이 끝나기 전에는 409 ANALYSIS_NOT_READY.
+      operationId: getProviderDetail
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: providerId, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderId' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProviderDetail' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /providers/{providerId}/status:
+    get:
+      summary: 공급자 공개 상태 (서버 60초 캐시)
+      description: statusSupport=live인 공급자만 (현재 Supabase). none이면 404 STATUS_NOT_SUPPORTED.
+      operationId: getProviderStatus
+      parameters:
+        - { name: providerId, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderId' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProviderStatus' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+
+  /demo-events/current:
+    get:
+      summary: 데모 재현 이벤트
+      operationId: getDemoEvent
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DemoEvent' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+
+  /health:
+    get:
+      summary: 헬스체크
+      operationId: getHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { status: { const: ok }, db: { const: ok } }, required: [status, db] }
+        '403': { $ref: '#/components/responses/Error' }
+        '500': { $ref: '#/components/responses/Error' }
+
+components:
+  responses:
+    Error:
+      description: 오류
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorBody' } } }
+
+  schemas:
+    ProviderId:
+      type: string
+      enum: [supabase, stripe, aws-s3]
+
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_REPO_URL
+        - REPO_NOT_ACCESSIBLE
+        - REPO_TOO_LARGE
+        - GITHUB_RATE_LIMITED
+        - GITHUB_UNAVAILABLE
+        - RATE_LIMITED
+        - ANALYSIS_NOT_FOUND
+        - ANALYSIS_NOT_READY
+        - PROVIDER_NOT_FOUND
+        - STATUS_NOT_SUPPORTED
+        - STATUS_UNAVAILABLE
+        - DEMO_EVENT_INVALID
+        - ORIGIN_NOT_ALLOWED
+        - BAD_REQUEST
+        - NOT_FOUND
+        - INTERNAL_ERROR
+
+    ApiError:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        message: { type: string, description: 화면에 그대로 써도 되는 한국어 문구 }
+        retryable: { type: boolean, description: true면 다시 시도 버튼 }
+        resetAt: { type: string, format: date-time, description: GITHUB_RATE_LIMITED에서 한도가 풀리는 시각 }
+        retryAfter: { type: integer, description: RATE_LIMITED에서 다시 시도까지 남은 초 }
+
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: '#/components/schemas/ApiError' }
+
+    RepoRef:
+      type: object
+      required: [owner, name, branch, commit]
+      properties:
+        owner: { type: string }
+        name: { type: string }
+        branch: { type: string }
+        commit: { type: string, pattern: '^[0-9a-f]{40}$' }
+
+    Step:
+      type: object
+      required: [key, state]
+      properties:
+        key: { type: string, enum: [repo, files, detect] }
+        state: { type: string, enum: [pending, running, done, failed] }
+
+    ProviderSummary:
+      type: object
+      required: [id, name, role, fileCount, files, usage, statusSupport]
+      properties:
+        id: { $ref: '#/components/schemas/ProviderId' }
+        name: { type: string }
+        role: { type: string, examples: [로그인, 결제, 파일 업로드] }
+        fileCount: { type: integer }
+        files:
+          type: array
+          description: 공급자별 근거 파일 (파일마다 대표 줄 하나, 강한 근거 순)
+          items:
+            type: object
+            required: [path, line]
+            properties:
+              path: { type: string }
+              line: { type: integer, minimum: 1 }
+        usage: { type: string, enum: [used, declared-only] }
+        statusSupport: { type: string, enum: [live, none] }
+
+    FileEntry:
+      oneOf:
+        - type: object
+          required: [path, state, matches]
+          properties:
+            path: { type: string }
+            state: { const: analyzed }
+            matches:
+              type: array
+              items:
+                type: object
+                required: [provider, line]
+                properties:
+                  provider: { $ref: '#/components/schemas/ProviderId' }
+                  line: { type: integer, minimum: 1 }
+        - type: object
+          required: [path, state, reason]
+          properties:
+            path: { type: string }
+            state: { const: skipped }
+            reason: { type: string, enum: [too-large, minified, parse-error] }
+        - type: object
+          required: [path, state]
+          properties:
+            path: { type: string }
+            state: { const: other }
+
+    AnalysisResult:
+      type: object
+      required: [providers, files, summary]
+      properties:
+        providers: { type: array, items: { $ref: '#/components/schemas/ProviderSummary' } }
+        files: { type: array, items: { $ref: '#/components/schemas/FileEntry' } }
+        summary:
+          type: object
+          required: [analyzed, skipped]
+          properties:
+            analyzed: { type: integer }
+            skipped: { type: integer }
+
+    Analysis:
+      type: object
+      required: [id, status, repo, steps, error, result]
+      properties:
+        id: { type: string, pattern: '^an_[0-9a-f]{16}$' }
+        status: { type: string, enum: [running, done, failed] }
+        repo: { $ref: '#/components/schemas/RepoRef' }
+        steps: { type: array, items: { $ref: '#/components/schemas/Step' } }
+        error: { oneOf: [ { $ref: '#/components/schemas/ApiError' }, { type: 'null' } ] }
+        result: { oneOf: [ { $ref: '#/components/schemas/AnalysisResult' }, { type: 'null' } ] }
+
+    CodeFacts:
+      type: object
+      required: [errorHandling, retry, timeout, statusCheck]
+      properties:
+        errorHandling: { type: boolean }
+        retry: { type: boolean }
+        timeout: { type: boolean }
+        statusCheck: { type: boolean }
+
+    EvidenceItem:
+      type: object
+      required: [path, line, language, reason, snippet, facts, endpoint]
+      properties:
+        path: { type: string }
+        line: { type: integer, minimum: 1 }
+        language: { type: string }
+        reason:
+          type: object
+          required: [kind, label]
+          properties:
+            kind: { type: string, enum: [call, http, import, type, setting, config, url, manifest, llm] }
+            label: { type: string, examples: [api.stripe.com 호출] }
+        snippet:
+          type: object
+          required: [startLine, lines]
+          properties:
+            startLine: { type: integer, minimum: 1 }
+            lines: { type: array, maxItems: 5, items: { type: string } }
+        facts: { oneOf: [ { $ref: '#/components/schemas/CodeFacts' }, { type: 'null' } ] }
+        endpoint:
+          oneOf:
+            - type: object
+              required: [host]
+              properties:
+                host: { type: string, examples: [api.stripe.com, '*.supabase.co'] }
+                path: { type: string, examples: [/v1/checkout/sessions] }
+            - type: 'null'
+
+    ProviderDetail:
+      type: object
+      required: [provider, evidence]
+      properties:
+        provider:
+          type: object
+          required: [id, name, statusPageUrl]
+          properties:
+            id: { $ref: '#/components/schemas/ProviderId' }
+            name: { type: string }
+            statusPageUrl: { type: [string, 'null'] }
+        evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceItem' } }
+
+    ProviderStatus:
+      type: object
+      required: [providerId, indicator, state, description, fetchedAt]
+      properties:
+        providerId: { $ref: '#/components/schemas/ProviderId' }
+        indicator: { type: string, examples: [none, minor, major, critical, maintenance] }
+        state: { type: string, enum: [operational, degraded, outage, maintenance, unknown] }
+        description: { type: string }
+        fetchedAt: { type: string, format: date-time }
+
+    DemoEvent:
+      type: object
+      required: [providerId, title, httpStatus, occurredAt]
+      properties:
+        providerId: { $ref: '#/components/schemas/ProviderId' }
+        title: { type: string }
+        httpStatus: { type: integer, minimum: 100, maximum: 599 }
+        occurredAt: { type: string, format: date-time }
