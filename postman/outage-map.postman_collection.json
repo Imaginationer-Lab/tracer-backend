@@ -112,6 +112,23 @@
                   "    body.result.files.forEach((f) => pm.expect(f.state).to.be.oneOf(['analyzed', 'skipped', 'other']));",
                   "    pm.expect(body.result.files.some((f) => f.state === 'analyzed' && f.matches.some((m) => m.provider === 'stripe'))).to.be.true;",
                   "  });",
+                  "  pm.test('예제 저장소(tracer-demo-store)면 디자인과 같은 결과', () => {",
+                  "    if (body.repo.owner !== 'Imaginationer-Lab' || body.repo.name !== 'tracer-demo-store') return;",
+                  "    pm.expect(body.result.providers.map((p) => [p.id, p.role, p.files])).to.eql([",
+                  "      ['supabase', '로그인', [{ path: 'src/auth/login.ts', line: 2 }]],",
+                  "      ['stripe', '결제', [{ path: 'src/payments/checkout.ts', line: 2 }]],",
+                  "      ['aws-s3', '파일 업로드', [{ path: 'src/storage/upload.ts', line: 6 }]],",
+                  "    ]);",
+                  "    pm.expect(body.result.summary).to.eql({ analyzed: 4, skipped: 0 });",
+                  "  });",
+                  "  pm.test('기타 외부 서비스는 배열 (AI 판단)', () => {",
+                  "    pm.expect(body.result.otherServices).to.be.an('array');",
+                  "    body.result.otherServices.forEach((o) => {",
+                  "      pm.expect(o.name).to.be.a('string');",
+                  "      pm.expect(o.clues.length).to.be.above(0);",
+                  "      pm.expect(o.files.length).to.be.above(0);",
+                  "    });",
+                  "  });",
                   "}"
                 ]
               }
@@ -171,6 +188,14 @@
                   "pm.test('호출부에는 코드 사실이 있다', () => {",
                   "  const calls = body.evidence.filter((e) => e.reason.kind === 'call' || e.reason.kind === 'http');",
                   "  calls.forEach((e) => pm.expect(e.facts).to.have.all.keys('errorHandling', 'retry', 'timeout', 'statusCheck'));",
+                  "});",
+                  "pm.test('예제 저장소면 checkout.ts:2 api.stripe.com 호출, 대비 코드 없음', () => {",
+                  "  const e = body.evidence.find((x) => x.path === 'src/payments/checkout.ts');",
+                  "  if (!e) return;",
+                  "  pm.expect([e.line, e.reason.label]).to.eql([2, 'api.stripe.com 호출']);",
+                  "  pm.expect(e.endpoint).to.eql({ host: 'api.stripe.com', path: '/v1/checkout/sessions' });",
+                  "  pm.expect(e.facts).to.eql({ errorHandling: false, retry: false, timeout: false, statusCheck: false });",
+                  "  pm.expect(e.snippet.startLine).to.eql(1);",
                   "});"
                 ]
               }
