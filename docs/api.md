@@ -2,6 +2,7 @@
 
 디자인(figdora `해커톤 캔버스`)의 화면 11개를 기준으로, 화면이 필요로 하는 데이터를 엔드포인트에 연결한 초안이다.
 응답 타입은 `src/api/contract.ts`에 있고, 엔진 결과를 응답으로 바꾸는 코드는 `src/api/present.ts`에 있다.
+프론트 구현용 인계 문서는 [`frontend-handoff.md`](frontend-handoff.md), 기계가 읽는 명세는 [`openapi.yaml`](openapi.yaml).
 
 ## 전체 흐름
 
@@ -68,9 +69,9 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
   "error": null,
   "result": {
     "providers": [
-      { "id": "supabase", "name": "Supabase", "role": "로그인", "fileCount": 1, "usage": "used", "statusSupport": "live" },
-      { "id": "stripe", "name": "Stripe", "role": "결제", "fileCount": 1, "usage": "used", "statusSupport": "none" },
-      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "fileCount": 1, "usage": "used", "statusSupport": "none" }
+      { "id": "supabase", "name": "Supabase", "role": "로그인", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
+      { "id": "stripe", "name": "Stripe", "role": "결제", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 3 } ], "usage": "used", "statusSupport": "none" }
     ],
     "files": [
       { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
@@ -105,11 +106,15 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
         "export function startCheckout(params: URLSearchParams) {",
         "  return fetch('https://api.stripe.com/v1/checkout/sessions', {",
         "    method: 'POST',", "    headers: {", "      Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}`," ] },
-      "facts": { "errorHandling": false, "retry": false, "timeout": false, "statusCheck": false }
+      "facts": { "errorHandling": false, "retry": false, "timeout": false, "statusCheck": false },
+      "endpoint": { "host": "api.stripe.com", "path": "/v1/checkout/sessions" }
     }
   ]
 }
 ```
+
+- `providers[].files`는 기능정의서의 공통 형식(`providers[].files[].path, line`)이다. 파일 트리 강조는 이것만으로 할 수 있고, 이 API는 스니펫·코드 사실이 필요할 때 부른다.
+- `endpoint`는 코드에서 식별한 API 엔드포인트다 (주제 확정 "API 엔드포인트 표시"). host로 판정한 근거에만 있고 SDK 호출은 `null`.
 
 - `reason.kind`: `call`(SDK 호출) · `http`(HTTP 호출) · `import` · `type`(주입된 클라이언트 타입) · `setting`(환경변수·설정 키 사용) · `config`(설정 파일 값) · `url` · `manifest`(의존성 선언) · `llm`(AI 판단)
 - `facts`는 호출부(`call`·`http`)에만 있다. 대응 가이드의 "코드 확인 · checkout.ts에 재시도·타임아웃·응답 상태 처리가 없어요" 줄을 여기서 만든다.
@@ -120,7 +125,7 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
 FEAT-003. 서버가 공급자 공개 상태 API를 대신 불러서 60초 캐시한다 (브라우저 CORS 회피).
 
 ```json
-{ "providerId": "supabase", "state": "operational", "description": "All Systems Operational", "fetchedAt": "2026-11-25T01:02:00Z" }
+{ "providerId": "supabase", "indicator": "none", "state": "operational", "description": "All Systems Operational", "fetchedAt": "2026-11-25T01:02:00Z" }
 ```
 
 - Statuspage `status.indicator` → `none: operational` · `minor: degraded` · `major/critical: outage` · `maintenance: maintenance`
