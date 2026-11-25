@@ -116,7 +116,9 @@ components:
   schemas:
     ProviderId:
       type: string
-      enum: [supabase, stripe, aws-s3]
+      pattern: '^[a-z0-9][a-z0-9-]{0,39}$'
+      description: 서비스 id. 고정 목록이 아니다 (AI 판정). supabase · stripe · aws-s3 는 고정 id
+      examples: [supabase, stripe, aws-s3, toss-payments, sentry]
 
     ErrorCode:
       type: string
@@ -136,6 +138,7 @@ components:
         - ORIGIN_NOT_ALLOWED
         - BAD_REQUEST
         - NOT_FOUND
+        - DETECTION_UNAVAILABLE
         - INTERNAL_ERROR
 
     ApiError:
@@ -176,8 +179,8 @@ components:
       properties:
         id: { $ref: '#/components/schemas/ProviderId' }
         name: { type: string }
-        role: { type: string, description: 화면용 한국어 라벨, examples: [로그인, 결제, 파일 업로드] }
-        category: { type: string, enum: [auth, payment, storage, database], description: 기계용 분류 }
+        role: { type: string, description: '화면용 한국어 라벨 (알려진 서비스가 아니면 AI가 붙임)', examples: [로그인, 결제, 파일 업로드, 에러 모니터링] }
+        category: { type: string, enum: [auth, payment, storage, database, ai, messaging, monitoring, analytics, other], description: '기계용 분류. 늘 수 있으니 모르는 값은 other로' }
         fileCount: { type: integer }
         files:
           type: array
@@ -190,23 +193,6 @@ components:
               line: { type: integer, minimum: 1 }
         usage: { type: string, enum: [used, declared-only] }
         statusSupport: { type: string, enum: [live, none] }
-
-    OtherServiceSummary:
-      type: object
-      description: 세 공급자 밖의 외부 서비스. 규칙으로 못 푼 단서를 AI(Claude)가 판단한 결과라 상태 연동·근거 상세가 없다
-      required: [name, clues, fileCount, files]
-      properties:
-        name: { type: string, examples: [SendGrid, Expo Push Notifications] }
-        clues: { type: array, items: { type: string }, description: '판단 재료: host, 패키지 이름, 호출식' }
-        fileCount: { type: integer }
-        files:
-          type: array
-          items:
-            type: object
-            required: [path, line]
-            properties:
-              path: { type: string }
-              line: { type: integer, minimum: 1 }
 
     FileEntry:
       oneOf:
@@ -240,7 +226,7 @@ components:
       required: [providers, otherServices, files, summary]
       properties:
         providers: { type: array, items: { $ref: '#/components/schemas/ProviderSummary' } }
-        otherServices: { type: array, items: { $ref: '#/components/schemas/OtherServiceSummary' }, description: AI가 꺼져 있거나 찾은 게 없으면 빈 배열 }
+        otherServices: { type: array, maxItems: 0, items: {}, deprecated: true, description: '항상 []. 모든 서비스가 providers에 들어간다. 지울 예정' }
         files: { type: array, items: { $ref: '#/components/schemas/FileEntry' } }
         summary:
           type: object

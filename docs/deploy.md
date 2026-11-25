@@ -85,7 +85,8 @@ DATABASE_URL=postgres://<user>:<password>@<host>:5432/postgres
 | `CORS_ORIGINS` | `http://localhost:9000,http://127.0.0.1:9000` | 브라우저 호출을 허용할 프론트 출처 (쉼표로 구분) |
 | `MAX_REPO_FILES` · `MAX_SOURCE_MB` | 20000 · 100 | 저장소 크기 상한: 파일 수(무시 폴더 제외), 읽을 파일(소스·매니페스트·설정) 크기 합. 이미지·캐시·git 기록은 세지 않는다 |
 | `MAX_TARBALL_MB` | 50 | 저장소 전체가 이보다 작으면 tarball 한 번에, 크면 필요한 파일만 받는다. 트리가 잘린 초대형 저장소는 tarball 받는 크기 상한 |
-| `ANTHROPIC_API_KEY` | 없음 | 있으면 규칙으로 못 푼 단서를 Claude로 분류한다 (docs/api.md "AI 판단"). 없으면 `otherServices`는 항상 빈 배열 |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | 분류에 쓰는 모델 |
-| `LLM_TIMEOUT_SECONDS` · `LLM_MAX_ITEMS` | 90 · 300 | 호출 시간 상한, 한 번에 보내는 단서 수 상한 (많이 쓰인 단서부터) |
+| `ANTHROPIC_API_KEY` | 없음 | **필요.** 외부 서비스 판정(docs/api.md "외부 서비스 탐지"). 없으면 저장된 판정만 쓰고, 처음 보는 후보가 있는 분석은 `DETECTION_UNAVAILABLE`로 실패한다 |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | 판정에 쓰는 모델. 바꾸면 분석 캐시 키가 바뀐다 |
+| `LLM_TIMEOUT_SECONDS` · `LLM_MAX_ITEMS` | 90 · 600 | 호출 한 번의 시간 상한, 분석 한 번에 묻는 새 후보 수 상한 (많이 쓰인 후보부터, 150개씩 나눠 물음) |
+| `CLUE_FIXTURE_FILE` | 없음 | 테스트용. 있으면 AI·DB 대신 이 파일의 고정 판정을 쓴다 (`docker-compose.test.yml`이 `test/fixtures/judgments.json`을 넣음) |
 | `DEMO_EVENT_FILE` | `data/demo-event.json` | 데모 재현 이벤트 |

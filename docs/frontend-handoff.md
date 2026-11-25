@@ -60,9 +60,9 @@
 
 ```json
 {
-  "id": "an_60f9b44155d4b902",
+  "id": "an_aa859918655cec2e",
   "status": "running",
-  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "66eccdfa73f3acf459eccdfbe2f8f1f611fda514" },
+  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "023b47895c39398e6a608d58ea45a96ce2b6e2db" },
   "steps": [
     { "key": "repo", "state": "done" },
     { "key": "files", "state": "running" },
@@ -81,16 +81,17 @@
 
 ```json
 {
-  "id": "an_60f9b44155d4b902",
+  "id": "an_aa859918655cec2e",
   "status": "done",
-  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "66eccdfa73f3acf459eccdfbe2f8f1f611fda514" },
+  "repo": { "owner": "Imaginationer-Lab", "name": "tracer-demo-store", "branch": "main", "commit": "023b47895c39398e6a608d58ea45a96ce2b6e2db" },
   "steps": [ { "key": "repo", "state": "done" }, { "key": "files", "state": "done" }, { "key": "detect", "state": "done" } ],
   "error": null,
   "result": {
     "providers": [
       { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
       { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" },
+      { "id": "toss-payments", "name": "Toss Payments", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/toss.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" }
     ],
     "otherServices": [],
     "files": [
@@ -98,40 +99,44 @@
       { "path": "README.md", "state": "other" },
       { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
       { "path": "src/payments/checkout.ts", "state": "analyzed", "matches": [ { "provider": "stripe", "line": 2 } ] },
+      { "path": "src/payments/toss.ts", "state": "analyzed", "matches": [ { "provider": "toss-payments", "line": 2 } ] },
       { "path": "src/storage/upload.ts", "state": "analyzed", "matches": [ { "provider": "aws-s3", "line": 6 } ] }
     ],
-    "summary": { "analyzed": 4, "skipped": 0 }
+    "summary": { "analyzed": 5, "skipped": 0 }
   }
 }
 ```
 
-`otherServices`는 세 공급자 밖에서 찾은 외부 서비스다. 예제 저장소에는 없고, 실제 저장소(`JeongWon-CHO/Ohaasa`)에서는 이렇게 나온다 (줄임):
+서비스는 세 개로 고정되어 있지 않다. 실제 저장소(`JeongWon-CHO/Ohaasa`)에서는 7개가 나오고, 그중 일부는 이렇다 (줄임):
 
 ```json
-"otherServices": [
-  { "name": "Expo Push Notifications", "clues": ["expo-notifications", "exp.host", "expo-server-sdk"], "fileCount": 4,
-    "files": [ { "path": "apps/android/package.json", "line": 28 }, { "path": "supabase/functions/send-horoscope-notifications/index.ts", "line": 243 } ] },
-  { "name": "Asahi Broadcasting", "clues": ["www.asahi.co.jp"], "fileCount": 1, "files": [ { "path": "backend/src/crawler/fetcher.ts", "line": 49 } ] }
-]
+{ "id": "expo-push", "name": "Expo Push Notifications", "role": "푸시 알림", "category": "messaging", "fileCount": 8,
+  "files": [ { "path": "apps/android/app/(tabs)/settings.tsx", "line": 373 }, { "path": "apps/android/src/lib/notifications.ts", "line": 37 } ],
+  "usage": "used", "statusSupport": "none" },
+{ "id": "openai", "name": "OpenAI", "role": "AI 모델 호출", "category": "ai", "fileCount": 5,
+  "files": [ { "path": "backend/src/gogo/pipeline.ts", "line": 19 }, { "path": "backend/src/gogo/translator.ts", "line": 66 } ],
+  "usage": "used", "statusSupport": "none" }
 ```
 
 - `steps[].key`의 화면 문구: `repo` 저장소와 기본 브랜치 확인 · `files` 분석할 파일 목록 읽기 · `detect` 외부 서비스 단서 찾기
 - `steps[].state`: `pending` · `running` · `done` · `failed`
-- `result.providers`: 탐지된 공급자만 담긴다. 순서는 Supabase → Stripe → Amazon S3. 비어 있으면 "탐지 결과 없음" 화면.
+- `result.providers`: 탐지된 외부 서비스 전부 (개수 제한 없음, OpenMAIC 같은 저장소는 25개). 순서는 Supabase → Stripe → Amazon S3 → 근거 파일이 많은 순 → 이름순. 비어 있으면 "탐지 결과 없음" 화면.
+  - 서버가 후보(의존성·import·호스트·HTTP 호출)를 뽑고 AI(Claude)가 어떤 서비스인지 판정한다. 줄 번호는 AI가 아니라 코드 구조 분석에서 나온다.
+  - `id`는 문자열이다 (`supabase` · `stripe` · `aws-s3`는 고정). 아이콘·색은 `category`로 고르고, 모르는 `category`는 `other`로 처리한다.
+  - `role`은 알려진 서비스가 아니면 AI가 붙인 짧은 한국어 라벨이다 (예: `에러 모니터링`, `AI 모델 호출`).
 - `providers[].files`: 공급자별 근거 파일. 파일마다 대표 줄 하나이고, 강한 근거(호출부) 순이다. **파일 트리 강조와 "관련 파일 · N행"에 이걸 쓴다.**
 - `result.files`: 저장소 파일 전체 경로 (무시 폴더 `node_modules` 등은 제외). 트리는 이걸로 만든다.
   - `state`: `analyzed` 분석함 · `skipped` 못 읽음(`reason`: `too-large` · `minified` · `parse-error`) · `other` 분석 대상 아님(README 등)
   - 경로가 5,000개를 넘으면 `other`는 빠진다.
 - `usage: "declared-only"`면 의존성 선언만 있고 코드 호출은 못 찾은 것이다.
 - 분석이 끝났는지는 `steps`가 아니라 `status`로 판단한다.
-- `otherServices`: 규칙으로 못 푼 단서(모르는 host, 패키지, 주소를 못 푼 HTTP 호출)를 서버가 AI(Claude)에 물어 판단한 결과다. 서비스 이름별로 묶여 있고 파일이 많은 순이다.
-  - 상태 연동과 근거 상세 API는 없다. 보여 준다면 "그 밖의 외부 서비스 (AI 판단)"처럼 확정이 아님을 표시한다.
-  - 서버에 AI 키가 없거나 AI 호출이 실패하면 빈 배열이다 (분석은 그대로 성공).
-- AI가 세 공급자 중 하나로 판단한 단서는 그 공급자의 근거에 들어가고 `reason.kind`가 `llm`, 문구가 `AI 판단 · …`이다.
+- `otherServices`: 항상 `[]` (지울 예정). 쓰지 않는다.
+- 주소를 못 푼 HTTP 호출을 AI가 서비스로 판정하면 그 근거의 `reason.kind`가 `llm`, 문구가 `AI 판단 · …`이다.
+- 서버가 외부 서비스를 판정하지 못하면(AI 장애) 분석이 `status: "failed"`, `error.code: "DETECTION_UNAVAILABLE"`로 끝난다 (다시 시도 가능).
 
 ### 3-3. `GET /analyses/:id/providers/:providerId` 근거 코드
 
-공급자를 선택할 때 부른다. `providerId`: `supabase` · `stripe` · `aws-s3`
+서비스를 선택할 때 부른다. `providerId`는 `result.providers[].id` 중 하나만 받는다. 결과에 없는 id는 `404 PROVIDER_NOT_FOUND`.
 
 실제 응답 (예제 저장소의 Stripe):
 
@@ -214,7 +219,8 @@ SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storag
 백엔드 `src/api/contract.ts`와 같다. 그대로 복사해서 써도 된다.
 
 ```ts
-export type ProviderId = 'supabase' | 'stripe' | 'aws-s3';
+/** 서비스 id. 소문자·숫자·하이픈. supabase · stripe · aws-s3 는 고정, 나머지는 AI 판정 (예: toss-payments, sentry) */
+export type ProviderId = string;
 export type StepKey = 'repo' | 'files' | 'detect';
 export type StepState = 'pending' | 'running' | 'done' | 'failed';
 
@@ -225,7 +231,7 @@ export type ErrorCode =
   | 'GITHUB_RATE_LIMITED' | 'GITHUB_UNAVAILABLE' | 'RATE_LIMITED'
   | 'ANALYSIS_NOT_FOUND' | 'ANALYSIS_NOT_READY' | 'PROVIDER_NOT_FOUND'
   | 'STATUS_NOT_SUPPORTED' | 'STATUS_UNAVAILABLE' | 'DEMO_EVENT_INVALID'
-  | 'ORIGIN_NOT_ALLOWED' | 'BAD_REQUEST' | 'NOT_FOUND' | 'INTERNAL_ERROR';
+  | 'ORIGIN_NOT_ALLOWED' | 'BAD_REQUEST' | 'NOT_FOUND' | 'DETECTION_UNAVAILABLE' | 'INTERNAL_ERROR';
 
 export interface ApiError {
   code: ErrorCode;
@@ -236,13 +242,14 @@ export interface ApiError {
 }
 // 오류 응답 본문: { error: ApiError }
 
-export type ProviderCategory = 'auth' | 'payment' | 'storage' | 'database';
+/** 늘 수 있으니 모르는 값은 'other'로 취급한다 */
+export type ProviderCategory = 'auth' | 'payment' | 'storage' | 'database' | 'ai' | 'messaging' | 'monitoring' | 'analytics' | 'other';
 
 export interface ProviderSummary {
   id: ProviderId;
   name: string;
   role: string;                                // 화면용 라벨: 로그인 · 결제 · 파일 업로드 · 데이터베이스 · 파일 저장
-  category: ProviderCategory;                  // 기계용 분류 (로그인→auth, 결제→payment, 파일 업로드·파일 저장→storage, 데이터베이스→database)
+  category: ProviderCategory;                  // 기계용 분류 (아이콘·색). 모르는 값은 other
   fileCount: number;
   files: { path: string; line: number }[];     // 공급자별 근거 파일
   usage: 'used' | 'declared-only';
@@ -255,16 +262,10 @@ export type FileEntry =
   | { path: string; state: 'skipped'; reason: SkipReason }
   | { path: string; state: 'other' };
 
-export interface OtherServiceSummary {
-  name: string;                                // AI가 붙인 서비스 이름 (예: SendGrid)
-  clues: string[];                             // 판단 재료: host, 패키지 이름, 호출식
-  fileCount: number;
-  files: { path: string; line: number }[];
-}
-
 export interface AnalysisResult {
   providers: ProviderSummary[];
-  otherServices: OtherServiceSummary[];        // 세 공급자 밖의 외부 서비스 (AI 판단). 없으면 []
+  /** @deprecated 항상 []. 지울 예정 */
+  otherServices: never[];
   files: FileEntry[];
   summary: { analyzed: number; skipped: number };
 }
@@ -323,6 +324,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | `STATUS_NOT_SUPPORTED` | 404 | 연동 전 공급자 | 부르지 않는다 ("실시간 연동 전") |
 | `DEMO_EVENT_INVALID` | 500 | 재현 데이터 이상 | "데모 이벤트를 불러오지 못했어요" + 재현 끄기 |
 | `ORIGIN_NOT_ALLOWED` | 403 | 9000이 아닌 출처 | 개발 설정 문제 (프론트 포트 확인) |
+| `DETECTION_UNAVAILABLE` | 503 | 외부 서비스를 판정하지 못함 (AI 장애). 분석이 `failed`로 끝날 때 `analysis.error`에 온다 | "외부 서비스를 판단하지 못했어요. 잠시 후 다시 시도해 주세요." + 다시 시도 |
 | `INTERNAL_ERROR` | 500 | 서버 오류 | 일반 오류 + 다시 시도 |
 
 - `error.retryable`이 `true`일 때만 "다시 시도" 버튼을 보인다.
@@ -400,8 +402,8 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | 재현 데이터 위치: "앱에 포함된 가상 이벤트" / `demo-replay/stripe-503.json` | 백엔드가 `GET /demo-events/current`로 준다. 프론트에 같은 JSON을 넣어 써도 된다 (필드 동일) |
 | 공개 예제 저장소 (주제 확정 "게시한 뒤 연결") | `Imaginationer-Lab/tracer-demo-store` (공개). 분석하면 디자인 SCR-002와 같은 결과가 나온다 (3-2) |
 | 빌드 설정(Dockerfile, serverless 설정 등) 읽기 (주제 확정 MVP) | 아직 안 함. 매니페스트와 설정 파일만 읽는다 |
-| LLM 분류·요약 | 분류는 들어감: 규칙으로 못 푼 단서를 Claude가 판단해 `otherServices`와 `llm` 근거로 준다. 요약은 아직 없음 |
-| Expo 등 오하아사 사례 공급자 | 상태 연동·근거 상세는 MVP 범위 밖 (기획도 3개 우선). 이름과 위치는 `otherServices`로 준다 |
+| LLM 분류·요약 | 탐지 자체를 AI가 한다: 서버가 뽑은 후보를 Claude가 서비스로 판정하고, 줄 번호는 코드 구조 분석으로 찾는다. 요약은 아직 없음 |
+| Expo 등 오하아사 사례 공급자 | `providers`에 같이 나온다 (근거 상세 포함). 상태 연동은 Supabase만 (기획도 3개 우선) |
 
 ## 8. 주의할 점
 

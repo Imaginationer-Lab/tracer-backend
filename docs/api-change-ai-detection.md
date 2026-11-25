@@ -1,10 +1,10 @@
-# API 변경 예고: 모든 외부 서비스를 AI로 탐지 (2026-11-25)
+# API 변경: 모든 외부 서비스를 AI로 탐지 (2026-11-25)
 
 백엔드가 공급자별 규칙(Supabase·Stripe·S3 전용 패턴)을 없앤다. 대신 코드에서 외부 호출 후보(외부 패키지 import, HTTP 호출, 호스트, 의존성)를 줄 번호와 함께 모두 뽑고, 각 후보가 어떤 서비스인지는 AI(Claude)가 정한다.
 
 그래서 **탐지되는 서비스가 세 개로 고정되지 않는다.** 엔드포인트, 요청 방법, 단계, 응답의 큰 모양은 그대로이고, 아래 항목만 바뀐다.
 
-> 이 문서는 구현 전에 먼저 넘기는 계약이다. 예시 JSON은 예상 값이고, 구현 후 실제 응답으로 바꿔서 다시 올린다.
+> 구현했다. 예시 JSON은 kangdora 서버의 실제 응답이다 (예고 때와 같다). 전체 응답 예시는 `frontend-handoff.md` 3장.
 
 ## 프론트가 바꿀 것
 
@@ -64,7 +64,7 @@ export interface AnalysisResult {
 
 `result.providers` 순서: Supabase → Stripe → Amazon S3(있으면, 디자인 순서 유지) → 나머지는 근거 파일이 많은 순 → 이름순.
 
-## 예시 (예상): 공개 예제 저장소 `Imaginationer-Lab/tracer-demo-store`
+## 예시 (실제 응답): 공개 예제 저장소 `Imaginationer-Lab/tracer-demo-store`
 
 예제 저장소에 토스페이먼츠 결제 승인(`src/payments/toss.ts`)이 추가되어, 네 번째 서비스로 나온다.
 
@@ -77,6 +77,17 @@ export interface AnalysisResult {
 ],
 "otherServices": []
 ```
+
+## 실측 (kangdora, 실제 Claude)
+
+| 저장소 | 서비스 | 전체 시간 |
+|---|---|---|
+| `Imaginationer-Lab/tracer-demo-store` | 4 (Supabase, Stripe, Amazon S3, Toss Payments) | 5초 |
+| `JeongWon-CHO/Ohaasa` | 7 (Supabase, Expo Push, OpenAI, 방송국 사이트 3, Resend) | 13초 |
+| `BCSDLab/KOIN_WEB_RECODE` | 3 (Sentry, Notion API, Toss Payments) | 14초 |
+| `THU-MAIC/OpenMAIC` | 25 (Amazon S3, OpenAI, Anthropic, Bedrock 등) | 48초 |
+
+같은 후보는 판정을 저장해 두므로 두 번째 분석부터는 AI 시간이 줄어든다.
 
 ## 화면에 미치는 영향 (참고)
 

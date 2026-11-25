@@ -77,7 +77,8 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
     "providers": [
       { "id": "supabase", "name": "Supabase", "role": "로그인", "category": "auth", "fileCount": 1, "files": [ { "path": "src/auth/login.ts", "line": 2 } ], "usage": "used", "statusSupport": "live" },
       { "id": "stripe", "name": "Stripe", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" },
-      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" }
+      { "id": "aws-s3", "name": "Amazon S3", "role": "파일 업로드", "category": "storage", "fileCount": 1, "files": [ { "path": "src/storage/upload.ts", "line": 6 } ], "usage": "used", "statusSupport": "none" },
+      { "id": "toss-payments", "name": "Toss Payments", "role": "결제", "category": "payment", "fileCount": 1, "files": [ { "path": "src/payments/toss.ts", "line": 2 } ], "usage": "used", "statusSupport": "none" }
     ],
     "otherServices": [],
     "files": [
@@ -85,31 +86,45 @@ SCR-002 진입 ── GET /api/providers/supabase/status  (statusSupport가 live
       { "path": "README.md", "state": "other" },
       { "path": "src/auth/login.ts", "state": "analyzed", "matches": [ { "provider": "supabase", "line": 2 } ] },
       { "path": "src/payments/checkout.ts", "state": "analyzed", "matches": [ { "provider": "stripe", "line": 2 } ] },
+      { "path": "src/payments/toss.ts", "state": "analyzed", "matches": [ { "provider": "toss-payments", "line": 2 } ] },
       { "path": "src/storage/upload.ts", "state": "analyzed", "matches": [ { "provider": "aws-s3", "line": 6 } ] }
     ],
-    "summary": { "analyzed": 4, "skipped": 0 }
+    "summary": { "analyzed": 5, "skipped": 0 }
   }
 }
 ```
 
 - `files`는 무시 폴더(`node_modules`, `dist` 등)를 뺀 저장소 경로 전체다. 프론트가 트리를 만들고 `matches`가 있는 파일의 상위 폴더를 펼친다. 경로가 5,000개를 넘으면 `analyzed`·`skipped`만 준다.
 - `state`: `analyzed`(읽고 분석함) · `skipped`(분석 대상인데 못 읽음: `too-large` · `minified` · `parse-error`) · `other`(분석 대상 아님, README 등)
-- `otherServices`: 세 공급자 밖의 외부 서비스. 아래 "AI 판단" 참고. 예제 저장소에는 없다.
+- `providers`: 탐지된 외부 서비스 전부. 서비스는 세 개로 고정되어 있지 않다 (아래 "외부 서비스 탐지"). 순서는 Supabase → Stripe → Amazon S3 → 근거 파일이 많은 순 → 이름순.
+- `otherServices`: 항상 `[]` (지울 예정). 예전에 세 공급자 밖 서비스를 따로 담던 자리다.
 - 분석 도중 실패(tarball 다운로드 실패 등)하면 `status: "failed"`이고 `error`는 아래 오류 형식과 같다.
 
-### AI 판단 (Claude)
+### 외부 서비스 탐지 (후보 추출 + AI 판정)
 
-규칙으로 못 푼 단서(모르는 host, 의존성, 주소를 못 푼 HTTP 호출)는 분석 뒤 Claude에 한 번에 물어 분류한다. 서버에 `ANTHROPIC_API_KEY`가 있을 때만 켜진다.
+공급자별 내장 규칙은 없다. 탐지는 세 단계다 (`src/engine/learn.ts`, `src/server/llm/clue-classifier.ts`).
 
-- 보내는 것: 단서 자체(host, 패키지 이름, 호출식과 주소 힌트)만. 파일 경로·줄 번호·코드 전문은 보내지 않는다.
-- 판정은 `clue_classifications`에 저장해서 다른 저장소에서 같은 단서가 나오면 다시 묻지 않는다.
-- 판정 결과
-  - 세 공급자 중 하나: 그 공급자 근거에 `reason.kind: "llm"`, 문구 `AI 판단 · …`으로 들어간다.
-  - 다른 서비스: `result.otherServices`에 서비스 이름별로 모은다 (`name`, `clues`, `fileCount`, `files`).
-  - 자체 백엔드·판단 불가: 버린다.
-- 답은 형식 검증을 통과한 것만 쓴다 (모르는 id·공급자, 60자 넘는 이름 등은 버림). 실패·시간 초과면 규칙 결과만으로 분석을 끝낸다.
-- 실측 (`JeongWon-CHO/Ohaasa`, `claude-opus-5-5` effort low): 단서 35개, 5.3초, 토큰 입력 1,616 · 출력 679.
-- AI를 켜거나 모델을 바꾸면 캐시 키(`ruleset_version`)가 바뀌어 같은 커밋도 다시 분석한다.
+1. **1차 분석 (규칙 없음):** 후보만 모은다. 의존성(매니페스트), package.json 없이 import한 npm 패키지, 코드·설정에 나온 호스트, 주소를 못 푼 HTTP 호출. 흔한 라이브러리(react, axios 등)는 비용을 줄이려고 미리 뺀다.
+2. **AI 판정 (Claude):** 후보마다 `service`(서비스 id·이름·분류·역할, 의존성이면 import 모듈·클래스 이름) · `library` · `internal` · `unknown`.
+   - 보내는 것: 후보 자체(host, 패키지 이름, 호출식과 주소 힌트)만. 파일 경로·줄 번호·코드 전문은 보내지 않는다.
+   - 판정은 `clue_classifications.judgment`에 저장해서 다른 저장소에서 같은 후보가 나오면 다시 묻지 않는다.
+   - 처음 보는 후보는 150개씩 묶어 동시에 4개까지 묻는다 (`claude-opus-5-5`, effort low).
+   - 답은 검증을 통과한 것만 쓴다: 후보 id, 판정 종류, 서비스 id 모양(`^[a-z0-9][a-z0-9-]{0,39}$`), 분류(모르면 `other`), 역할 길이, 패턴 넓이. 알려진 서비스 별칭은 고정 id로 맞춘다 (`amazon-s3` → `aws-s3`).
+3. **2차 분석:** 판정을 그 분석에서만 쓰는 규칙(dependency · import · host · type · call · setting)으로 바꿔 엔진을 한 번 더 돌린다. 그래서 줄 번호·호출 추적(1-hop 포함)·코드 사실은 AI가 짐작하지 않고 코드 구조에서 나온다.
+   - 주소를 못 푼 HTTP 호출처럼 규칙으로 만들 수 없는 판정은 그 위치에 `reason.kind: "llm"` 근거로 붙는다 (문구 `AI 판단 · …`).
+
+- 처음 보는 후보를 판정하지 못하면(AI 키 없음, 호출 실패·시간 초과) 분석은 `DETECTION_UNAVAILABLE`로 실패한다. "탐지 결과 없음"으로 잘못 보이지 않게 하려는 것이다. 실패한 분석은 캐시하지 않아서 다시 요청하면 다시 시도한다.
+- 알려진 서비스(`supabase` · `stripe` · `aws-s3`)는 id·이름·상태 페이지가 고정이다. 상태 API는 Supabase만 붙어 있다.
+- 실측 (2026-11-25, kangdora):
+
+| 저장소 | 후보 | AI 판정 시간 | 토큰 (입력 · 출력) | 서비스 | 전체 |
+|---|---|---|---|---|---|
+| `Imaginationer-Lab/tracer-demo-store` | 4 | 2.7초 | 946 · 255 | 4 | 5초 |
+| `JeongWon-CHO/Ohaasa` | 39 | 9.8초 | 2,347 · 1,290 | 7 | 13초 |
+| `BCSDLab/KOIN_WEB_RECODE` | 34 | 5.8초 | 2,011 · 713 | 3 | 14초 |
+| `THU-MAIC/OpenMAIC` | 218 | 24초 | 9,628 · 5,328 | 25 | 48초 |
+
+- 판정 방식(모델, 프롬프트 버전 `CLUE_VERSION`)이나 엔진(`ENGINE_VERSION`)이 바뀌면 캐시 키(`ruleset_version`)가 바뀌어 같은 커밋도 다시 분석한다.
 
 ### `GET /api/analyses/:id/providers/:providerId`
 
@@ -152,7 +167,7 @@ FEAT-003. 서버가 공급자 공개 상태 API를 대신 불러서 60초 캐시
 
 - Statuspage `status.indicator` → `none: operational` · `minor: degraded` · `major/critical: outage` · `maintenance: maintenance`
 - 조회 실패 → `502 STATUS_UNAVAILABLE` ("상태 확인 불가 · 다시 조회"). 공식 상태를 "정상"으로 대신 채우지 않는다.
-- Stripe·S3는 `statusSupport: "none"`이라 프론트가 호출하지 않고 "실시간 연동 전"을 띄운다.
+- Supabase 말고는 모두 `statusSupport: "none"`이라 프론트가 호출하지 않고 "실시간 연동 전"을 띄운다.
 
 ### `GET /api/demo-events/current`
 
@@ -180,7 +195,8 @@ FEAT-004. 서버에 들어 있는 재현 데이터 한 건을 검증해서 돌�
 | `RATE_LIMITED` | 429 | 요청이 많아요 · `retryAfter`초 뒤 다시 시도 (디자인에 화면 추가 필요) | 있음 |
 | `ANALYSIS_NOT_FOUND` | 404 | (만료된 id) 입력 화면으로 | - |
 | `ANALYSIS_NOT_READY` | 409 | 아직 분석 중 (상세를 너무 일찍 부름) | 있음 |
-| `PROVIDER_NOT_FOUND` | 404 | 지원하지 않는 공급자 id | - |
+| `PROVIDER_NOT_FOUND` | 404 | 이 분석 결과에 없는 서비스 id | - |
+| `DETECTION_UNAVAILABLE` | 503 | 외부 서비스를 판단하지 못함 (AI 키 없음, AI 호출 실패) | "외부 서비스를 판단하지 못했어요" + 다시 시도 |
 | `STATUS_NOT_SUPPORTED` | 404 | 실시간 연동 전 (`statusSupport: none`인 공급자) | - |
 | `STATUS_UNAVAILABLE` | 502 | 상태 확인 불가 · 다시 조회 | 있음 |
 | `DEMO_EVENT_INVALID` | 500 | 데모 이벤트를 불러오지 못했어요 | 재현 끄기 |
@@ -213,8 +229,8 @@ GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 40
 트리 → tarball 스트림 또는 GraphQL(필요한 파일만) → RepoFile[] → 워커 스레드 analyze() → present.ts → Postgres → 위 응답들
                                        │
                                        ├─ endpoints[] ─▶ endpoints / analysis_endpoints
-                                       └─ ambiguous[] ─▶ Claude 분류 → clue_classifications
-                                                          (예정) 규칙 제안 → 검증 → learned_rules
+                                       └─ 1차 ambiguous[] ─▶ Claude 판정 ⇄ clue_classifications
+                                                              └─▶ 이번 분석의 규칙 → 2차 analyze()
 ```
 
 ## 저장 (PostgreSQL 19, `src/server/db/migrations.ts`, 자료형 선택은 docs/postgres.md)
@@ -222,15 +238,14 @@ GitHub 응답 매핑: `404` → `REPO_NOT_ACCESSIBLE` (비공개 저장소도 40
 | 테이블 | 키 | 범위 | 용도 |
 |---|---|---|---|
 | `analyses` | 저장소 + 커밋 + `ruleset_version` | 저장소별 | 분석 결과 캐시. 같은 커밋이면 파싱·LLM 0회 |
-| `clue_classifications` | 정규화한 단서 (`npm:openai`, `host:api.resend.com`) | 모든 저장소 공유 | LLM 판정 캐시. 토큰을 실제로 줄이는 곳 |
+| `clue_classifications` | 정규화한 후보 (`v2\|dep\|npm\|openai`, `v2\|host\|api.resend.com`) | 모든 저장소 공유 | AI 판정 캐시 (`judgment`에 판정 전체). 토큰을 실제로 줄이는 곳 |
 | `endpoints` | 공급자 + host + 경로 | 모든 저장소 공유 | 엔드포인트 → 상태 페이지 컴포넌트 (장애 점검은 여기만 본다, LLM 불필요) |
 | `analysis_endpoints` | 분석 + 엔드포인트 + 파일·줄 | 저장소별 | 어느 파일이 그 엔드포인트를 쓰는지 |
-| `learned_rules` | 규칙 id | 모든 저장소 공유 | 검증을 통과한 학습 규칙. 다음 분석부터 LLM 없이 처리 |
+| `learned_rules` | 규칙 id | - | 쓰지 않음 (예전 설계: 학습 규칙 저장). 규칙은 분석마다 판정에서 만든다 |
 
-- `ruleset_version`은 내장 규칙 + 학습 규칙 + `ENGINE_VERSION`의 해시다. 규칙이 늘거나 엔진 로직을 바꾸면 같은 커밋도 다시 분석한다 (규칙만 돌리는 것이라 LLM 비용은 없다).
+- `ruleset_version`은 `e{ENGINE_VERSION}+ai:{모델}:v{CLUE_VERSION}`이다. 엔진이나 판정 방식이 바뀌면 같은 커밋도 다시 분석한다 (저장된 판정은 그대로 쓰므로 새 후보만 묻는다).
 - 서버가 분석 도중 꺼지면, 시작할 때 `running`으로 남은 분석을 실패로 바꾼다. 같은 저장소가 서버를 반복해서 죽이는 일을 막으려고 자동으로 다시 돌리지 않는다.
 - `endpoints`는 지금 host로 판정한 근거(직접 HTTP 호출, URL, 설정 값)만 채운다. SDK 호출(`stripe.paymentIntents.create`)을 엔드포인트·컴포넌트로 잇는 표는 아직 없다.
-- LLM 규칙 학습은 분석 응답을 막지 않는다. 사용자는 규칙 결과를 바로 보고, 학습된 규칙은 다음 분석부터 반영된다.
 
 ## 디자인과 맞춰볼 것
 
