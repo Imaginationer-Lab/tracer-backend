@@ -11,3 +11,6 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
+
+# 테스트용 가짜 저장소의 node_modules (무시되는지 검사하려고 둠)
+!test/fixtures/*/node_modules/
