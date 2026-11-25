@@ -15,6 +15,7 @@ import { ApiException, ERRORS } from '../errors.js';
 import { GitHubClient, parseRepoUrl } from '../github/github.client.js';
 import { RepoLoader, type LoadPlan } from '../github/repo-loader.js';
 import { ClueClassifier } from '../llm/clue-classifier.js';
+import { StatusRegistry } from '../providers/status-registry.js';
 import { EnginePool } from './engine-pool.js';
 import { RateLimiter } from './rate-limiter.js';
 
@@ -38,6 +39,7 @@ export class AnalysesService implements OnModuleInit {
     private readonly pool: EnginePool,
     private readonly limiter: RateLimiter,
     private readonly classifier: ClueClassifier,
+    private readonly status: StatusRegistry,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -51,7 +53,7 @@ export class AnalysesService implements OnModuleInit {
     const version = this.version;
 
     const cached = await this.repo.findByCommit(ref, version);
-    if (cached && cached.status !== 'failed') return { analysis: toAnalysis(cached), created: false };
+    if (cached && cached.status !== 'failed') return { analysis: this.withStatus(toAnalysis(cached)), created: false };
 
     if (this.pool.busy) throw new ApiException('RATE_LIMITED', { retryAfter: 30 });
     const plan = await this.loader.plan(ref);
@@ -65,7 +67,7 @@ export class AnalysesService implements OnModuleInit {
       // 같은 커밋을 다른 요청이 방금 시작했다: 그 분석을 돌려준다
       this.limiter.refund(ip);
       const other = await this.repo.findByCommit(ref, version);
-      if (other) return { analysis: toAnalysis(other), created: false };
+      if (other) return { analysis: this.withStatus(toAnalysis(other)), created: false };
       throw new ApiException('INTERNAL_ERROR');
     }
 
@@ -76,7 +78,17 @@ export class AnalysesService implements OnModuleInit {
   async get(id: string): Promise<Analysis> {
     const record = await this.repo.findById(id);
     if (!record) throw new ApiException('ANALYSIS_NOT_FOUND');
-    return toAnalysis(record);
+    return this.withStatus(toAnalysis(record));
+  }
+
+  /**
+   * statusSupport는 읽을 때 정한다. 분석이 끝난 뒤 상태 페이지를 찾았으면 다음 조회부터 'live'.
+   * 아직 찾아보지 않은 서비스는 여기서 백그라운드 찾기를 건다 (예전에 끝난 분석 포함, 서비스마다 한 번).
+   */
+  private withStatus(a: Analysis): Analysis {
+    if (!a.result) return a;
+    this.status.discover(a.result.providers.map((p) => ({ id: p.id, name: p.name })));
+    return { ...a, result: { ...a.result, providers: a.result.providers.map((p) => ({ ...p, statusSupport: this.status.support(p.id) })) } };
   }
 
   /** 이 분석 결과에 있는 서비스만. 없으면 PROVIDER_NOT_FOUND */
@@ -88,7 +100,8 @@ export class AnalysesService implements OnModuleInit {
     if (record.status !== 'done') throw new ApiException('ANALYSIS_NOT_READY');
     const detail = record.details && Object.hasOwn(record.details, providerId) ? record.details[providerId as ProviderId] : undefined;
     if (!detail) throw new ApiException('PROVIDER_NOT_FOUND');
-    return detail;
+    const page = this.status.source(providerId)?.pageUrl;
+    return page && !detail.provider.statusPageUrl ? { ...detail, provider: { ...detail.provider, statusPageUrl: page } } : detail;
   }
 
   private async run(id: string, ref: Analysis['repo'], plan: LoadPlan): Promise<void> {
@@ -108,6 +121,8 @@ export class AnalysesService implements OnModuleInit {
       // 2차: 판정으로 만든 규칙으로 줄 번호·호출 추적·코드 사실을 찾는다
       const out = detection.rules.length || detection.direct.length ? await this.pool.run(files, detection) : candidates;
       await this.repo.markDone(id, steps('done', 'done', 'done'), out);
+      // 상태 API가 없는 서비스는 공식 상태 페이지를 백그라운드로 찾는다
+      this.status.discover(out.result.providers.map((p) => ({ id: p.id, name: p.name })));
       this.logger.log(
         `${ref.owner}/${ref.name}@${ref.commit.slice(0, 7)} 완료: 파일 ${files.length}개, 파싱 ${out.stats.parsedFiles}개, 후보 ${candidates.ambiguous.length}개, 서비스 ${out.result.providers.length}개 (규칙 ${detection.rules.length}개)`,
       );

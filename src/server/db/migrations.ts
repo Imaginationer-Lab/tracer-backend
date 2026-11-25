@@ -72,4 +72,18 @@ export const MIGRATIONS: { id: string; sql: string[] }[] = [
     id: '002_clue_judgment',
     sql: [`ALTER TABLE clue_classifications ADD COLUMN judgment jsonb`],
   },
+  {
+    // 서버 목록에 없는 서비스의 상태 페이지를 AI 웹 검색으로 찾고 검증한 결과. 못 찾은 것도 남겨 7일 동안 다시 찾지 않는다
+    id: '003_status_sources',
+    sql: [
+      `CREATE TABLE status_sources (
+        service_id text        PRIMARY KEY,
+        name       text        NOT NULL,
+        page_url   text,
+        api_url    text,
+        state      text        NOT NULL CHECK (state IN ('verified', 'none')),
+        checked_at timestamptz NOT NULL DEFAULT now()
+      )`,
+    ],
+  },
 ];

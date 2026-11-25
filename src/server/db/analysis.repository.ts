@@ -3,6 +3,7 @@ import pg from 'pg';
 import type { Analysis, ApiError, ProviderDetail, ProviderId, RepoRef } from '../../api/contract.js';
 import type { AmbiguousItem } from '../../engine/types.js';
 import type { Verdict } from '../../engine/learn.js';
+import type { StatusSource } from '../providers/status-sources.js';
 import type { EndpointUse, WorkerOutput } from '../../engine/worker.js';
 import { DB_POOL } from './database.module.js';
 
@@ -155,6 +156,25 @@ export class AnalysisRepository {
         rows.map((r) => r.model),
         rows.map((r) => JSON.stringify(r.verdict)),
       ],
+    );
+  }
+
+  async loadStatusSources(): Promise<{ id: string; source: StatusSource | null; checkedAt: number }[]> {
+    const { rows } = await this.pool.query<{ service_id: string; page_url: string | null; api_url: string | null; state: string; checked_at: Date }>(
+      'SELECT service_id, page_url, api_url, state, checked_at FROM status_sources',
+    );
+    return rows.map((r) => ({
+      id: r.service_id,
+      source: r.state === 'verified' && r.page_url && r.api_url ? { pageUrl: r.page_url, apiUrl: r.api_url } : null,
+      checkedAt: r.checked_at.getTime(),
+    }));
+  }
+
+  async saveStatusSource(row: { id: string; name: string; source: StatusSource | null }): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO status_sources (service_id, name, page_url, api_url, state, checked_at) VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (service_id) DO UPDATE SET name = EXCLUDED.name, page_url = EXCLUDED.page_url, api_url = EXCLUDED.api_url, state = EXCLUDED.state, checked_at = now()`,
+      [row.id, row.name.slice(0, 100), row.source?.pageUrl ?? null, row.source?.apiUrl ?? null, row.source ? 'verified' : 'none'],
     );
   }
 
