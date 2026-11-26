@@ -2,7 +2,7 @@
 
 공식 상태 API가 없는 서비스(Stripe, Amazon S3 등)도 "지금 서버가 응답하는지"를 볼 수 있게, 근거 API에 **호스트별 응답 확인(`hosts`)** 을 더한다. 서비스를 눌렀을 때 트리로 펼쳐 보여 주는 용도다.
 
-> 구현 전에 먼저 넘기는 계약이다. 예시 JSON은 예상 값이고, 구현 후 실제 응답으로 바꿔 다시 올린다.
+> 2026-11-26 구현함. 예시는 kangdora에서 예제 저장소를 분석해 받은 실제 응답이다.
 
 ## 프론트가 바꿀 것
 
@@ -47,11 +47,11 @@ export interface ProviderDetail {
 
 | `result` | `label` | 언제 |
 |---|---|---|
-| `ok` | 응답 있음 | 2xx·3xx, 그리고 401·404·405처럼 서버가 정상적으로 거절한 경우 |
+| `ok` | 응답 있음 | 2xx·3xx, 그리고 403·429를 뺀 4xx(401·404·421 등). 서버가 요청을 읽고 거절한 경우 |
 | `error` | 응답 이상 | 5xx, 시간 초과(5초), 연결 실패 |
-| `unknown` | 확인 불가 | 403·429(상대가 우리를 막음), 우리 서버 네트워크 문제 |
+| `unknown` | 확인 불가 | 403·429(상대가 우리를 막음), 우리 서버 네트워크 문제, 확인하지 않는 주소(내부 주소로 풀리거나 DNS에 없는 호스트) |
 
-401이 `ok`인 이유: 키 없이 보냈으니 "인증이 필요하다"고 거절한 것이고, 거절할 수 있다는 건 서버가 살아서 요청을 처리한다는 뜻이다. 숫자는 `httpStatus`로 참고용으로만 준다.
+401·404가 `ok`인 이유: 키 없이 보냈으니 "인증이 필요하다"고 거절한 것이고, 거절할 수 있다는 건 서버가 살아서 요청을 처리한다는 뜻이다. 숫자는 `httpStatus`로 참고용으로만 준다.
 
 ## 서버가 확인하는 방법
 
@@ -63,7 +63,7 @@ export interface ProviderDetail {
 - **우리 쪽 문제 가려내기:** 실패가 나면 알려진 외부 주소 하나를 같이 확인해서, 그것도 실패하면 `unknown`(확인 불가)으로 둔다.
 - `*`가 들어간 호스트(`*.supabase.co`처럼 프로젝트마다 다른 주소)는 실제 주소를 몰라서 확인하지 않는다. 대신 그 서비스는 공식 상태 배지로 본다.
 
-## 예시 (예상): 예제 저장소의 Stripe
+## 예시: 예제 저장소의 Stripe
 
 ```json
 {
@@ -73,7 +73,7 @@ export interface ProviderDetail {
     {
       "name": "api",
       "host": "api.stripe.com",
-      "probe": { "result": "ok", "label": "응답 있음", "httpStatus": 401, "checkedAt": "2026-11-25T08:41:00Z" },
+      "probe": { "result": "ok", "label": "응답 있음", "httpStatus": 404, "checkedAt": "2026-11-26T00:55:00.000Z" },
       "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ]
     }
   ]
@@ -84,8 +84,21 @@ export interface ProviderDetail {
 
 ```
 Stripe                                  실시간 연동 전
-└─ api   api.stripe.com   ● 응답 있음 (401) · 17:41
+└─ api   api.stripe.com   ● 응답 있음 (404) · 09:55
     └─ src/payments/checkout.ts:2
 ```
 
 호스트가 여럿이면 (예: OpenAI를 `api.openai.com`과 `files.openai.com`으로 부르는 저장소) 줄이 늘어난다.
+
+## 실측 (kangdora, 2026-11-26)
+
+| 저장소 | 서비스 | hosts |
+|---|---|---|
+| 예제 | Supabase | `[]` (`*.supabase.co`라 뺌, 공식 상태 배지로 봄) |
+| 예제 | Stripe | `api.stripe.com` 응답 있음 (404) |
+| 예제 | Amazon S3 | `s3.amazonaws.com` 응답 있음 (307), 대표 호스트라 `files: []` |
+| 예제 | Toss Payments | `api.tosspayments.com` 응답 있음 (404) |
+| OpenMAIC | OpenAI | `api.openai.com` 응답 있음 (421) |
+| OpenMAIC | Azure OpenAI | `your-resource.openai.azure.com` 확인 불가 (예시 주소라 DNS에 없음) |
+
+25개 서비스 중 19개에 호스트가 잡혔다. 처음 열 때 호스트당 0.1~0.7초, 60초 안에 다시 열면 캐시라 수 ms.

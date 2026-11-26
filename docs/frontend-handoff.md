@@ -395,7 +395,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 
   ```
   Stripe                                  실시간 연동 전
-  └─ api   api.stripe.com   ● 응답 있음 (401) · 09:55
+  └─ api   api.stripe.com   ● 응답 있음 (404) · 09:55
       └─ src/payments/checkout.ts:2
   ```
 

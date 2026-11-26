@@ -151,7 +151,7 @@ SCR-002 진입 ── GET /api/providers/:id/status  (statusSupport가 live인 �
     {
       "name": "api",
       "host": "api.stripe.com",
-      "probe": { "result": "ok", "label": "응답 있음", "httpStatus": 401, "checkedAt": "2026-11-26T00:55:00.000Z" },
+      "probe": { "result": "ok", "label": "응답 있음", "httpStatus": 404, "checkedAt": "2026-11-26T00:55:00.000Z" },
       "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ]
     }
   ]
@@ -171,7 +171,7 @@ SCR-002 진입 ── GET /api/providers/:id/status  (statusSupport가 live인 �
 
 | `probe.result` | `probe.label` | 언제 |
 |---|---|---|
-| `ok` | 응답 있음 | 2xx·3xx, 401·404·405 (키 없이 보냈으니 서버가 정상적으로 거절한 것) |
+| `ok` | 응답 있음 | 2xx·3xx, 그리고 403·429를 뺀 4xx(401·404·421 등. 키 없이 보냈으니 서버가 요청을 읽고 거절한 것) |
 | `error` | 응답 이상 | 5xx, 시간 초과(5초), 연결 실패 |
 | `unknown` | 확인 불가 | 403·429(상대가 우리를 막음), 우리 서버 네트워크 문제, 확인하지 않는 주소 |
 
