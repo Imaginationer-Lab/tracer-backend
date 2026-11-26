@@ -56,6 +56,14 @@ describe('TS 쇼핑몰 (디자인 예제)', () => {
     expect(ev.snippet.lines[1]).toContain("fetch('https://api.stripe.com/v1/checkout/sessions'");
   });
 
+  it('응답 확인할 호스트: 코드의 host, 동적 호스트는 빼고, SDK만 쓰면 대표 호스트', async () => {
+    const stripe = (await detail('ts-shop', 'stripe')).targets!;
+    expect(stripe[0]).toEqual({ name: 'api', host: 'api.stripe.com', files: expect.arrayContaining([{ path: 'src/payments/checkout.ts', line: 2 }]) });
+    // *.supabase.co는 실제 주소를 모른다
+    expect((await detail('ts-shop', 'supabase')).targets).toEqual([]);
+    expect((await detail('ts-shop', 'aws-s3')).targets).toEqual([{ name: 's3', host: 's3.amazonaws.com', files: [] }]);
+  });
+
   it('동적 서브도메인 *.supabase.co 도 Supabase 로그인으로 본다', async () => {
     const r = await run('ts-shop');
     const http = at(r, 'supabase', 'src/auth/login.ts').find((e) => e.kind === 'http')!;

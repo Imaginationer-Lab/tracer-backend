@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { classifyStatus, HostProber, probeHost, type ProbeDeps } from '../src/server/providers/host-probe.js';
+import { hostTargets } from '../src/api/present.js';
 import { discoverOne, parseCandidates } from '../src/server/providers/status-registry.js';
 import { builtinStatus } from '../src/server/providers/status-sources.js';
 import { isPublicAddress, readStatus, verifyStatusPage, type VerifyDeps } from '../src/server/providers/status-verify.js';
@@ -101,5 +103,67 @@ describe('처음 보는 서비스 상태 페이지 찾기', () => {
       { id: 'acme', name: 'Acme', source: { pageUrl: 'https://status.acme.io', apiUrl: 'https://status.acme.io/api/v2/status.json' } },
       { id: 'nostatus', name: 'No Status', source: null },
     ]);
+  });
+});
+
+describe('호스트별 응답 확인', () => {
+  const probeDeps = (dns: Record<string, string[]>, answer: Record<string, number | 'down'>): ProbeDeps & { asked: string[] } => {
+    const asked: string[] = [];
+    return {
+      asked,
+      resolve: async (host) => {
+        if (!dns[host]) throw new Error('ENOTFOUND');
+        return dns[host]!;
+      },
+      request: async (url) => {
+        asked.push(url);
+        const a = answer[url];
+        if (a === undefined || a === 'down') throw new Error('timeout');
+        return a;
+      },
+    };
+  };
+  const BASE = 'https://www.google.com/generate_204';
+
+  it('상태 코드 판정: 401·404·405는 살아 있음, 403·429는 확인 불가', () => {
+    for (const s of [200, 204, 301, 401, 404, 405]) expect(classifyStatus(s), String(s)).toBe('ok');
+    for (const s of [500, 502, 503]) expect(classifyStatus(s), String(s)).toBe('error');
+    for (const s of [403, 429, 418]) expect(classifyStatus(s), String(s)).toBe('unknown');
+  });
+
+  it('호스트 루트에만, 응답이 없으면 외부 기준 주소로 우리 쪽 문제인지 가린다', async () => {
+    const d = probeDeps({ 'api.stripe.com': ['104.16.1.1'], 'down.acme.io': ['104.16.1.2'] }, { 'https://api.stripe.com/': 401, [BASE]: 204 });
+    expect(await probeHost('api.stripe.com', d)).toMatchObject({ result: 'ok', label: '응답 있음', httpStatus: 401 });
+    expect(await probeHost('down.acme.io', d)).toMatchObject({ result: 'error', label: '응답 이상', httpStatus: null });
+    expect(d.asked).toEqual(['https://api.stripe.com/', 'https://down.acme.io/', BASE]);
+
+    const offline = probeDeps({ 'down.acme.io': ['104.16.1.2'] }, {});
+    expect(await probeHost('down.acme.io', offline)).toMatchObject({ result: 'unknown', label: '확인 불가' });
+  });
+
+  it('내부 주소로 풀리거나 이상한 호스트는 부르지 않는다', async () => {
+    const d = probeDeps({ 'evil.example': ['10.0.0.5'] }, {});
+    for (const h of ['evil.example', 'localhost', '127.0.0.1', 'metadata.internal', 'nowhere.example', 'a.com:8443', 'u@a.com', 'a.com/x']) {
+      expect((await probeHost(h, d)).result, h).toBe('unknown');
+    }
+    expect(d.asked).toEqual([]);
+  });
+
+  it('같은 호스트는 60초 동안 한 번만', async () => {
+    const d = probeDeps({ 'api.stripe.com': ['104.16.1.1'] }, { 'https://api.stripe.com/': 401 });
+    const prober = new HostProber();
+    prober.deps = d;
+    const target = { name: 'api', host: 'api.stripe.com', files: [] };
+    const [a, b] = await Promise.all([prober.hosts([target]), prober.hosts([target])]);
+    await prober.hosts([target]);
+    expect(d.asked).toEqual(['https://api.stripe.com/']);
+    expect(a[0]).toMatchObject({ name: 'api', host: 'api.stripe.com', probe: { result: 'ok' }, files: [] });
+    expect(b).toEqual(a);
+  });
+
+  it('서비스당 최대 3개, 부르는 파일이 많은 순', () => {
+    const info = { id: 'openai', name: 'OpenAI', category: 'ai' as const, role: 'AI', statusPageUrl: null };
+    const uses = ['a', 'b', 'c', 'd'].flatMap((h, i) => Array.from({ length: 4 - i }, (_, j) => ({ host: `${h}.openai.com`, path: `f${j}.ts`, line: 1 })));
+    expect(hostTargets([...uses, { host: '*.openai.com', path: 'x.ts', line: 1 }], info).map((t) => t.host)).toEqual(['a.openai.com', 'b.openai.com', 'c.openai.com']);
   });
 });
