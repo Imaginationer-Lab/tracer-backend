@@ -32,12 +32,11 @@ const defaultDeps: ProbeDeps = {
 
 const LABEL: Record<HostProbe['result'], string> = { ok: '응답 있음', error: '응답 이상', unknown: '확인 불가' };
 
-/** 401·404·405처럼 서버가 정상적으로 거절한 것도 살아 있다는 뜻. 403·429는 상대가 우리를 막은 것이라 알 수 없다 */
+/** 401·404·421처럼 서버가 요청을 읽고 거절한 4xx도 살아 있다는 뜻. 403·429는 상대가 우리를 막은 것이라 알 수 없다 */
 export function classifyStatus(status: number): HostProbe['result'] {
   if (status === 403 || status === 429) return 'unknown';
-  if (status >= 500) return 'error';
-  if (status >= 200 && status < 400) return 'ok';
-  if (status === 401 || status === 404 || status === 405) return 'ok';
+  if (status >= 500 && status < 600) return 'error';
+  if (status >= 200 && status < 500) return 'ok';
   return 'unknown';
 }
 

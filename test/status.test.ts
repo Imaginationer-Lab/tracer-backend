@@ -125,10 +125,10 @@ describe('호스트별 응답 확인', () => {
   };
   const BASE = 'https://www.google.com/generate_204';
 
-  it('상태 코드 판정: 401·404·405는 살아 있음, 403·429는 확인 불가', () => {
-    for (const s of [200, 204, 301, 401, 404, 405]) expect(classifyStatus(s), String(s)).toBe('ok');
+  it('상태 코드 판정: 403·429를 뺀 4xx는 살아 있음, 403·429는 확인 불가', () => {
+    for (const s of [200, 204, 301, 307, 400, 401, 404, 405, 421]) expect(classifyStatus(s), String(s)).toBe('ok');
     for (const s of [500, 502, 503]) expect(classifyStatus(s), String(s)).toBe('error');
-    for (const s of [403, 429, 418]) expect(classifyStatus(s), String(s)).toBe('unknown');
+    for (const s of [403, 429, 100, 600]) expect(classifyStatus(s), String(s)).toBe('unknown');
   });
 
   it('호스트 루트에만, 응답이 없으면 외부 기준 주소로 우리 쪽 문제인지 가린다', async () => {
