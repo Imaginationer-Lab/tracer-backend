@@ -15,8 +15,10 @@ export interface VerifyDeps {
   fetch: (url: string) => Promise<Response>;
 }
 
+export const resolvePublic: VerifyDeps['resolve'] = async (host) => (await lookup(host, { all: true })).map((a) => a.address);
+
 const defaultDeps: VerifyDeps = {
-  resolve: async (host) => (await lookup(host, { all: true })).map((a) => a.address),
+  resolve: resolvePublic,
   fetch: (url) => fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(5000), headers: { Accept: 'application/json', 'User-Agent': 'outage-map-status-check' } }),
 };
 
@@ -43,7 +45,8 @@ export function isPublicAddress(addr: string): boolean {
   return false;
 }
 
-async function checkHost(url: URL, deps: VerifyDeps): Promise<boolean> {
+/** https · 443 · 계정 정보 없음 · IP 리터럴·내부 도메인 아님 · DNS가 전부 공개 주소로 풀림 */
+export async function checkHost(url: URL, deps: Pick<VerifyDeps, 'resolve'>): Promise<boolean> {
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) return false;
   const host = url.hostname.toLowerCase();
   if (isIP(host.replace(/^\[|\]$/g, '')) || !host.includes('.') || /\.(?:local|internal|localhost|lan|home|corp)$/.test(host)) return false;
