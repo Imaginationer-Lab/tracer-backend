@@ -286,7 +286,7 @@ components:
 
     ProviderDetail:
       type: object
-      required: [provider, evidence]
+      required: [provider, evidence, hosts]
       properties:
         provider:
           type: object
@@ -296,6 +296,37 @@ components:
             name: { type: string }
             statusPageUrl: { type: [string, 'null'] }
         evidence: { type: array, items: { $ref: '#/components/schemas/EvidenceItem' } }
+        hosts:
+          description: 호스트별 응답 확인 (서버가 호스트 루트에 키 없이 GET, 호스트당 60초 캐시). 공식 상태가 아니다. 서비스당 최대 3개
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/ServiceHost' }
+
+    ServiceHost:
+      type: object
+      required: [name, host, probe, files]
+      properties:
+        name: { type: string, description: 호스트 맨 앞 이름 (api.stripe.com → api) }
+        host: { type: string, examples: [api.stripe.com] }
+        probe: { $ref: '#/components/schemas/HostProbe' }
+        files:
+          description: 이 호스트를 부르는 코드 위치. SDK 서비스의 대표 호스트면 []
+          type: array
+          items:
+            type: object
+            required: [path, line]
+            properties:
+              path: { type: string }
+              line: { type: integer, minimum: 1 }
+
+    HostProbe:
+      type: object
+      required: [result, label, httpStatus, checkedAt]
+      properties:
+        result: { type: string, enum: [ok, error, unknown] }
+        label: { type: string, enum: [응답 있음, 응답 이상, 확인 불가] }
+        httpStatus: { type: [integer, 'null'], description: 참고용. 응답이 없으면 null }
+        checkedAt: { type: string, format: date-time }
 
     ProviderStatus:
       type: object

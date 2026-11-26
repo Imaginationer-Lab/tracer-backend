@@ -187,7 +187,8 @@ SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storag
 - `facts`는 호출부(`call`·`http`)에만 있고 나머지는 `null`이다.
 - `endpoint`는 host로 판정한 근거에만 있다 (`*`는 동적인 부분, 예: `*.supabase.co`). SDK 호출은 `null`이다.
 - 목록은 강한 근거 순이다. 첫 항목이 "여기부터 확인하세요" 대상이다.
-- 결과에 없는 공급자를 부르면 `200`에 `evidence: []`가 온다.
+- 결과에 없는 공급자를 부르면 `404 PROVIDER_NOT_FOUND`가 온다.
+- `hosts[]`: 호스트별 응답 확인 (서버가 호스트 루트에 키 없이 GET, 호스트당 60초 캐시). 서비스당 최대 3개, 없으면 `[]`. `probe.label`(응답 있음·응답 이상·확인 불가)을 그대로 쓰고 `httpStatus`는 참고용이다. 공식 상태 배지와 섞지 않는다. 판정 표는 `docs/api.md`.
 
 ### 3-4. `GET /providers/:providerId/status` 공급자 공개 상태
 
@@ -295,9 +296,27 @@ export interface EvidenceItem {
   endpoint: { host: string; path?: string } | null;
 }
 
+export interface HostProbe {
+  result: 'ok' | 'error' | 'unknown';
+  /** '응답 있음' | '응답 이상' | '확인 불가' */
+  label: string;
+  httpStatus: number | null;
+  checkedAt: string;
+}
+
+export interface ServiceHost {
+  /** api.stripe.com → 'api' */
+  name: string;
+  host: string;
+  probe: HostProbe;
+  /** SDK 서비스의 대표 호스트면 [] */
+  files: { path: string; line: number }[];
+}
+
 export interface ProviderDetail {
   provider: { id: ProviderId; name: string; statusPageUrl: string | null };
   evidence: EvidenceItem[];
+  hosts: ServiceHost[];
 }
 
 export interface ProviderStatus {
@@ -372,6 +391,13 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 - 선택한 뒤: `GET /analyses/:id/providers/:providerId` 응답의 `evidence[]`를 목록으로 보여준다.
   - 항목: `path:line`, `reason.label`, 스니펫(근거 줄 강조)
   - `endpoint`가 있으면 `host + path`도 함께 표시한다 (예: `api.stripe.com/v1/checkout/sessions`).
+- `hosts[]`가 있으면 서비스 아래에 트리 한 단계로 그린다 (안 그려도 깨지지 않음):
+
+  ```
+  Stripe                                  실시간 연동 전
+  └─ api   api.stripe.com   ● 응답 있음 (401) · 09:55
+      └─ src/payments/checkout.ts:2
+  ```
 
 ### 데모 재현
 
