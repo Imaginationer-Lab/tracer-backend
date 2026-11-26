@@ -4,6 +4,37 @@ import { categoryOf, FEATURED_ORDER, KNOWN_SERVICES, type ServiceInfo } from '..
 import type { EngineResult, Evidence } from '../engine/types.js';
 import type { AnalysisResult, EvidenceItem, FileEntry, ProviderDetail, ProviderId, ProviderSummary } from './contract.js';
 
+/** 응답 확인할 호스트 (probe 결과는 조회할 때 붙인다) */
+export interface HostTarget {
+  name: string;
+  host: string;
+  files: { path: string; line: number }[];
+}
+
+/** 저장하는 세부정보: hosts 대신 확인할 호스트 목록. 예전 결과에는 targets가 없다 */
+export type StoredDetail = Omit<ProviderDetail, 'hosts'> & { targets?: HostTarget[] };
+
+export const MAX_HOSTS = 3;
+const HOSTNAME = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** 근거의 endpoint.host → 서비스당 최대 3개 (부르는 파일이 많은 순). '*'가 들어간 동적 호스트는 뺀다. 없으면 대표 호스트 */
+export function hostTargets(uses: { host: string; path: string; line: number }[], info: ServiceInfo): HostTarget[] {
+  const byHost = new Map<string, Map<string, number>>();
+  for (const u of uses) {
+    const host = u.host.toLowerCase().replace(/\.$/, '');
+    if (!HOSTNAME.test(host)) continue;
+    const files = byHost.get(host) ?? new Map<string, number>();
+    files.set(u.path, Math.min(files.get(u.path) ?? Infinity, u.line));
+    byHost.set(host, files);
+  }
+  const out = [...byHost]
+    .map(([host, files]) => ({ name: host.split('.')[0]!, host, files: [...files].map(([path, line]) => ({ path, line })).sort((a, b) => a.path.localeCompare(b.path)) }))
+    .sort((a, b) => b.files.length - a.files.length || a.host.localeCompare(b.host))
+    .slice(0, MAX_HOSTS);
+  if (!out.length && info.probeHost) out.push({ name: info.probeHost.split('.')[0]!, host: info.probeHost, files: [] });
+  return out;
+}
+
 const PRIORITY: Record<Evidence['kind'], number> = {
   call: 9,
   http: 9,
@@ -102,7 +133,7 @@ export function toAnalysisResult(r: EngineResult, directory: ServiceDirectory = 
   return { providers, otherServices: [], files, summary: { analyzed: r.stats.analyzed, skipped: r.stats.skipped } };
 }
 
-export function toProviderDetail(r: EngineResult, provider: ProviderId, directory: ServiceDirectory = new Map()): ProviderDetail {
+export function toProviderDetail(r: EngineResult, provider: ProviderId, directory: ServiceDirectory = new Map()): StoredDetail {
   const info = serviceInfo(provider, directory);
   const best = [...bestByFile(evidenceFor(r, provider).list).values()].sort(
     (a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.path.localeCompare(b.path),
@@ -121,7 +152,8 @@ export function toProviderDetail(r: EngineResult, provider: ProviderId, director
       endpoint: e.endpoint ?? null,
     };
   });
-  return { provider: { id: provider, name: info.name, statusPageUrl: info.statusPageUrl }, evidence };
+  const uses = r.evidence.flatMap((e) => (e.provider === provider && e.endpoint ? [{ host: e.endpoint.host, path: e.path, line: e.line }] : []));
+  return { provider: { id: provider, name: info.name, statusPageUrl: info.statusPageUrl }, evidence, targets: hostTargets(uses, info) };
 }
 
 export function evidenceLabel(e: Evidence): string {

@@ -107,9 +107,31 @@ export interface EvidenceItem {
   endpoint: { host: string; path?: string } | null;
 }
 
+/** 우리 서버가 호스트 루트에 키 없이 GET 한 번 보내 본 결과 (공급자의 공식 상태가 아님) */
+export interface HostProbe {
+  /** ok: 응답 있음 · error: 응답 이상 · unknown: 확인 불가 */
+  result: 'ok' | 'error' | 'unknown';
+  /** 화면에 그대로 쓰는 문구: '응답 있음' | '응답 이상' | '확인 불가' */
+  label: string;
+  /** 참고용 (예: 401). 시간 초과·연결 실패처럼 응답이 없으면 null */
+  httpStatus: number | null;
+  checkedAt: string;
+}
+
+export interface ServiceHost {
+  /** 호스트 맨 앞 이름 (api.stripe.com → 'api'). 트리 이름으로 쓴다 */
+  name: string;
+  host: string;
+  probe: HostProbe;
+  /** 이 호스트를 부르는 코드 위치. 코드에 주소가 없는 SDK 서비스의 대표 호스트면 [] */
+  files: { path: string; line: number }[];
+}
+
 export interface ProviderDetail {
   provider: { id: ProviderId; name: string; statusPageUrl: string | null };
   evidence: EvidenceItem[];
+  /** 호스트별 응답 확인. 세부정보를 열 때 확인한다 (호스트당 60초 캐시). 확인할 호스트가 없으면 [] */
+  hosts: ServiceHost[];
 }
 
 export interface ProviderStatus {

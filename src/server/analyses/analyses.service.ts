@@ -15,6 +15,8 @@ import { ApiException, ERRORS } from '../errors.js';
 import { GitHubClient, parseRepoUrl } from '../github/github.client.js';
 import { RepoLoader, type LoadPlan } from '../github/repo-loader.js';
 import { ClueClassifier } from '../llm/clue-classifier.js';
+import { hostTargets, serviceInfo } from '../../api/present.js';
+import { HostProber } from '../providers/host-probe.js';
 import { StatusRegistry } from '../providers/status-registry.js';
 import { EnginePool } from './engine-pool.js';
 import { RateLimiter } from './rate-limiter.js';
@@ -40,6 +42,7 @@ export class AnalysesService implements OnModuleInit {
     private readonly limiter: RateLimiter,
     private readonly classifier: ClueClassifier,
     private readonly status: StatusRegistry,
+    private readonly prober: HostProber,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -100,8 +103,17 @@ export class AnalysesService implements OnModuleInit {
     if (record.status !== 'done') throw new ApiException('ANALYSIS_NOT_READY');
     const detail = record.details && Object.hasOwn(record.details, providerId) ? record.details[providerId as ProviderId] : undefined;
     if (!detail) throw new ApiException('PROVIDER_NOT_FOUND');
+    const { targets, ...rest } = detail;
     const page = this.status.source(providerId)?.pageUrl;
-    return page && !detail.provider.statusPageUrl ? { ...detail, provider: { ...detail.provider, statusPageUrl: page } } : detail;
+    const provider = page && !rest.provider.statusPageUrl ? { ...rest.provider, statusPageUrl: page } : rest.provider;
+    // 예전 결과에는 targets가 없어서 저장된 근거의 endpoint로 정한다
+    const list =
+      targets ??
+      hostTargets(
+        rest.evidence.flatMap((e) => (e.endpoint ? [{ host: e.endpoint.host, path: e.path, line: e.line }] : [])),
+        serviceInfo(providerId as ProviderId, new Map()),
+      );
+    return { ...rest, provider, hosts: await this.prober.hosts(list) };
   }
 
   private async run(id: string, ref: Analysis['repo'], plan: LoadPlan): Promise<void> {

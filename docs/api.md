@@ -146,6 +146,14 @@ SCR-002 진입 ── GET /api/providers/:id/status  (statusSupport가 live인 �
       "facts": { "errorHandling": false, "retry": false, "timeout": false, "statusCheck": false },
       "endpoint": { "host": "api.stripe.com", "path": "/v1/checkout/sessions" }
     }
+  ],
+  "hosts": [
+    {
+      "name": "api",
+      "host": "api.stripe.com",
+      "probe": { "result": "ok", "label": "응답 있음", "httpStatus": 404, "checkedAt": "2026-11-26T00:55:00.000Z" },
+      "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ]
+    }
   ]
 }
 ```
@@ -155,7 +163,23 @@ SCR-002 진입 ── GET /api/providers/:id/status  (statusSupport가 live인 �
 
 - `reason.kind`: `call`(SDK 호출) · `http`(HTTP 호출) · `import` · `type`(주입된 클라이언트 타입) · `setting`(환경변수·설정 키 사용) · `config`(설정 파일 값) · `url` · `manifest`(의존성 선언) · `llm`(AI 판단)
 - `facts`는 호출부(`call`·`http`)에만 있다. 대응 가이드의 "코드 확인 · checkout.ts에 재시도·타임아웃·응답 상태 처리가 없어요" 줄을 여기서 만든다.
-- 분석 결과에 없는 공급자면 `evidence: []`.
+- 분석 결과에 없는 공급자면 404 `PROVIDER_NOT_FOUND`.
+
+#### `hosts[]`: 호스트별 응답 확인
+
+공식 상태 API가 없는 서비스(Stripe, Amazon S3 등)도 "지금 서버가 응답하는지"를 보여 준다. **우리 서버가 직접 요청해 본 결과라 공식 상태 배지(`statusSupport`)와 섞지 않는다.**
+
+| `probe.result` | `probe.label` | 언제 |
+|---|---|---|
+| `ok` | 응답 있음 | 2xx·3xx, 그리고 403·429를 뺀 4xx(401·404·421 등. 키 없이 보냈으니 서버가 요청을 읽고 거절한 것) |
+| `error` | 응답 이상 | 5xx, 시간 초과(5초), 연결 실패 |
+| `unknown` | 확인 불가 | 403·429(상대가 우리를 막음), 우리 서버 네트워크 문제, 확인하지 않는 주소 |
+
+- 호스트 루트(`https://api.stripe.com/`)에 키·본문 없이 GET 한 번. 코드의 경로·쿼리는 쓰지 않고, 리다이렉트는 따라가지 않는다(3xx는 `ok`).
+- 호스트 단위 60초 캐시를 서버 전체가 공유한다. 세부정보를 열 때만 확인한다.
+- 대상: 그 서비스 근거의 `endpoint.host` 중 부르는 파일이 많은 순으로 최대 3개. `*`가 들어간 동적 호스트(`*.supabase.co`)는 뺀다. 코드에 주소가 없는 SDK 서비스는 대표 호스트 하나(Stripe → `api.stripe.com`, Amazon S3 → `s3.amazonaws.com`, `files: []`). 확인할 호스트가 없으면 `[]`.
+- 주소 안전장치는 상태 페이지 검증과 같다 (https·443만, IP 주소·내부 도메인 거부, DNS가 공개 주소로만 풀려야 함).
+- 응답이 없으면 외부 기준 주소를 하나 더 불러서, 그것도 안 되면 `unknown`으로 둔다.
 
 ### `GET /api/providers/:providerId/status`
 

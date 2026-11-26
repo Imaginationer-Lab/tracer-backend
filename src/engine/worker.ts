@@ -1,8 +1,8 @@
 // piscina 워커 진입점. 분석은 CPU를 쓰므로 API 요청을 처리하는 메인 스레드와 분리한다.
 // 원문(texts)은 크기가 커서 돌려보내지 않고, 응답과 저장에 필요한 모양으로 바꿔서 보낸다.
 
-import { toAnalysisResult, toProviderDetail } from '../api/present.js';
-import type { AnalysisResult, ProviderDetail, ProviderId } from '../api/contract.js';
+import { toAnalysisResult, toProviderDetail, type StoredDetail } from '../api/present.js';
+import type { AnalysisResult, ProviderId } from '../api/contract.js';
 import { analyze } from './analyze.js';
 import { applyDirect, type DetectionPlan } from './learn.js';
 import type { Rule, ServiceInfo } from './rules.js';
@@ -27,7 +27,7 @@ export interface EndpointUse {
 
 export interface WorkerOutput {
   result: AnalysisResult;
-  details: Partial<Record<ProviderId, ProviderDetail>>;
+  details: Partial<Record<ProviderId, StoredDetail>>;
   ambiguous: AmbiguousItem[];
   endpoints: EndpointUse[];
   stats: { parsedFiles: number; sourceChars: number; rulesetVersion: string };

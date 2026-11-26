@@ -171,7 +171,7 @@ export function rulesFromJudgments(items: AmbiguousItem[], judgments: Judgment[]
     const known = KNOWN_SERVICES[id];
     const cur = services.get(id);
     const info: ServiceInfo = known
-      ? { id: known.id, name: known.name, category: known.category, role: known.role, statusPageUrl: known.statusPageUrl, ...(known.statusApi ? { statusApi: known.statusApi } : {}) }
+      ? { id: known.id, name: known.name, category: known.category, role: known.role, statusPageUrl: known.statusPageUrl, ...(known.statusApi ? { statusApi: known.statusApi } : {}), ...(known.probeHost ? { probeHost: known.probeHost } : {}) }
       : { id, name: j.service.name, category: j.service.category, role: j.service.role, statusPageUrl: null };
     // 같은 서비스로 판정된 후보가 여럿이면 많이 쓰인 후보의 이름·역할을 쓴다
     if (!cur || item.occurrences.length > cur.weight) services.set(id, { info, weight: item.occurrences.length });
