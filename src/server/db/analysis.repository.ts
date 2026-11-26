@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import pg from 'pg';
-import type { Analysis, ApiError, ProviderDetail, ProviderId, RepoRef } from '../../api/contract.js';
+import type { Analysis, ApiError, ProviderId, RepoRef } from '../../api/contract.js';
+import type { StoredDetail } from '../../api/present.js';
 import type { AmbiguousItem } from '../../engine/types.js';
 import type { Verdict } from '../../engine/learn.js';
 import type { StatusSource } from '../providers/status-sources.js';
@@ -9,7 +10,7 @@ import { DB_POOL } from './database.module.js';
 
 export interface AnalysisRecord extends Analysis {
   rulesetVersion: string;
-  details: Partial<Record<ProviderId, ProviderDetail>> | null;
+  details: Partial<Record<ProviderId, StoredDetail>> | null;
   ambiguous: AmbiguousItem[] | null;
 }
 

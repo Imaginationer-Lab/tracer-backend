@@ -99,6 +99,8 @@ export interface ServiceInfo {
   statusApi?: string;
   /** 근거의 호출식·URL 경로로 역할을 더 좁힌다 (알려진 서비스만) */
   roles?: { callee?: string; path?: string; role: string }[];
+  /** 코드에 주소가 없을 때(SDK) 응답 확인에 쓰는 대표 호스트 */
+  probeHost?: string;
 }
 
 export const CATEGORIES: ProviderCategory[] = ['auth', 'payment', 'storage', 'database', 'ai', 'messaging', 'monitoring', 'analytics', 'other'];
@@ -130,13 +132,14 @@ export const KNOWN_SERVICES: Record<string, ServiceInfo & { aliases: string[] }>
     ],
     aliases: ['supabase'],
   },
-  stripe: { id: 'stripe', name: 'Stripe', category: 'payment', role: '결제', statusPageUrl: 'https://status.stripe.com', aliases: ['stripe'] },
+  stripe: { id: 'stripe', name: 'Stripe', category: 'payment', role: '결제', statusPageUrl: 'https://status.stripe.com', probeHost: 'api.stripe.com', aliases: ['stripe'] },
   'aws-s3': {
     id: 'aws-s3',
     name: 'Amazon S3',
     category: 'storage',
     role: '파일 업로드',
     statusPageUrl: 'https://health.aws.amazon.com/health/status',
+    probeHost: 's3.amazonaws.com',
     aliases: ['aws-s3', 'amazon-s3', 's3', 'amazon-simple-storage-service'],
   },
 };
