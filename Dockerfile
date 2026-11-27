@@ -22,6 +22,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist ./dist
 COPY data ./data
+COPY skills ./skills
 USER node
 EXPOSE 3000
 CMD ["node", "dist/server/main.js"]
