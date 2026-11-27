@@ -224,6 +224,48 @@
           ]
         },
         {
+          "name": "Stripe 대체 서비스 (AI 제안)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/analyses/{{analysisId}}/providers/stripe/alternatives"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 또는 503 ALTERNATIVES_UNAVAILABLE', () => pm.expect(pm.response.code).to.be.oneOf([200, 503]));",
+                  "const body = pm.response.json();",
+                  "if (pm.response.code === 503) return pm.test('503이면 다시 시도 가능', () => pm.expect([body.error.code, body.error.retryable]).to.eql(['ALTERNATIVES_UNAVAILABLE', true]));",
+                  "pm.test('쓰는 기능과 대체 후보 모양', () => {",
+                  "  pm.expect(body.providerId).to.eql('stripe');",
+                  "  pm.expect(body.features.length).to.be.above(0);",
+                  "  const keys = body.features.map((f) => f.key);",
+                  "  body.features.forEach((f) => { pm.expect(f.label).to.be.a('string'); pm.expect(f.files.length).to.be.above(0); });",
+                  "  pm.expect(body.alternatives.length).to.be.at.most(3);",
+                        "  const labels = { 'drop-in': '주소·키만 바꾸면 됨', 'in-repo': '저장소에 이미 있음', rewrite: '코드 수정 필요' };",
+                        "  body.alternatives.forEach((a) => {",
+                  "    pm.expect(a.id).to.match(/^[a-z0-9][a-z0-9-]{0,39}$/);",
+                  "    pm.expect(a.id).to.not.eql('stripe');",
+                  "    pm.expect(a.fitLabel).to.eql(labels[a.fit]);",
+                        "    pm.expect(a.coverage.map((c) => c.feature)).to.eql(keys);",
+                  "    pm.expect(a.statusSupport).to.be.oneOf(['live', 'none']);",
+                  "    pm.expect(a.changes.settings).to.be.an('array');",
+                  "    pm.expect(a.changes.files).to.be.an('array');",
+                  "  });",
+                  "  pm.expect(new Date(body.generatedAt).toString()).to.not.eql('Invalid Date');",
+                  "});",
+                  "pm.test('예제 저장소면 이미 있는 Toss Payments가 in-repo로 나온다', () => {",
+                  "  const toss = body.alternatives.find((a) => a.id === 'toss-payments');",
+                  "  if (toss) pm.expect(toss.fit).to.be.oneOf(['in-repo', 'drop-in']);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "결과에 없는 서비스 → 404",
           "request": { "method": "GET", "url": "{{baseUrl}}/api/analyses/{{analysisId}}/providers/paypal" },
           "event": [

@@ -72,6 +72,22 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
 
+  /analyses/{id}/providers/{providerId}/alternatives:
+    get:
+      summary: 대체 서비스 (AI 제안). 쓰는 기능만 보고 고칠 양이 적은 순 최대 3개
+      description: 결과는 DB에 저장해 같은 코드면 재사용한다. 새로 만들 때만 IP 토큰을 쓴다. 처음은 5~15초.
+      operationId: getProviderAlternatives
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: providerId, in: path, required: true, schema: { $ref: '#/components/schemas/ProviderId' } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ProviderAlternatives' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+
   /providers/{providerId}/status:
     get:
       summary: 공급자 공개 상태 (서버 60초 캐시)
@@ -139,6 +155,7 @@ components:
         - BAD_REQUEST
         - NOT_FOUND
         - DETECTION_UNAVAILABLE
+        - ALTERNATIVES_UNAVAILABLE
         - INTERNAL_ERROR
 
     ApiError:
@@ -327,6 +344,58 @@ components:
         label: { type: string, enum: [응답 있음, 응답 이상, 확인 불가] }
         httpStatus: { type: [integer, 'null'], description: 참고용. 응답이 없으면 null }
         checkedAt: { type: string, format: date-time }
+
+    ProviderAlternatives:
+      type: object
+      required: [providerId, features, alternatives, generatedAt]
+      properties:
+        providerId: { $ref: '#/components/schemas/ProviderId' }
+        features:
+          type: array
+          items:
+            type: object
+            required: [key, label, files]
+            properties:
+              key: { type: string, examples: [checkout-session] }
+              label: { type: string, examples: [결제창 생성] }
+              files: { type: array, items: { $ref: '#/components/schemas/FileLine' } }
+        alternatives:
+          type: array
+          maxItems: 3
+          items:
+            type: object
+            required: [id, name, category, fit, fitLabel, summary, coverage, changes, statusSupport]
+            properties:
+              id: { $ref: '#/components/schemas/ProviderId' }
+              name: { type: string }
+              category: { type: string }
+              fit: { type: string, enum: [drop-in, in-repo, rewrite] }
+              fitLabel: { type: string, enum: [주소·키만 바꾸면 됨, 저장소에 이미 있음, 코드 수정 필요] }
+              summary: { type: string }
+              coverage:
+                type: array
+                items:
+                  type: object
+                  required: [feature, support, note]
+                  properties:
+                    feature: { type: string }
+                    support: { type: string, enum: ['yes', partial, 'no'] }
+                    note: { type: [string, 'null'] }
+              changes:
+                type: object
+                required: [settings, files]
+                properties:
+                  settings: { type: array, items: { type: string } }
+                  files: { type: array, items: { $ref: '#/components/schemas/FileLine' } }
+              statusSupport: { type: string, enum: [live, none] }
+        generatedAt: { type: string, format: date-time }
+
+    FileLine:
+      type: object
+      required: [path, line]
+      properties:
+        path: { type: string }
+        line: { type: integer, minimum: 1 }
 
     ProviderStatus:
       type: object
