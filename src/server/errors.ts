@@ -18,6 +18,7 @@ export const ERRORS: Record<ErrorCode, { status: number; message: string; retrya
   BAD_REQUEST: { status: 400, message: '요청 형식이 올바르지 않아요.', retryable: false },
   NOT_FOUND: { status: 404, message: '없는 경로예요.', retryable: false },
   DETECTION_UNAVAILABLE: { status: 503, message: '외부 서비스를 판단하지 못했어요. 잠시 후 다시 시도해 주세요.', retryable: true },
+  ALTERNATIVES_UNAVAILABLE: { status: 503, message: '대체 서비스를 찾지 못했어요. 잠시 후 다시 시도해 주세요.', retryable: true },
   INTERNAL_ERROR: { status: 500, message: '서버에서 문제가 생겼어요.', retryable: true },
 };
 
