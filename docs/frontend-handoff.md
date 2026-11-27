@@ -194,6 +194,7 @@ SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storag
 
 - **화면에 "AI 제안"이라고 표시해 주세요.** 응답에는 따로 표시 필드가 없다 (항상 AI 제안).
 - 처음은 5~15초 걸린다. 버튼을 눌렀을 때만 부르고 로딩을 보여 준다. 같은 코드면 다음부터 바로 온다.
+- `alternatives: []`면 "대체할 서비스가 없어요" (200, 오류 아님).
 - 타입·정렬·예시: `docs/api-change-alternatives.md`. 실패하면 503 `ALTERNATIVES_UNAVAILABLE`(다시 시도).
 
 ### 3-4. `GET /providers/:providerId/status` 공급자 공개 상태
