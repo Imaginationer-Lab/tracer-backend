@@ -5,6 +5,7 @@ import type { StoredDetail } from '../../api/present.js';
 import type { AmbiguousItem } from '../../engine/types.js';
 import type { Verdict } from '../../engine/learn.js';
 import type { StatusSource } from '../providers/status-sources.js';
+import type { AltPlan } from '../alternatives/alternatives.js';
 import type { EndpointUse, WorkerOutput } from '../../engine/worker.js';
 import { DB_POOL } from './database.module.js';
 
@@ -169,6 +170,20 @@ export class AnalysisRepository {
       source: r.state === 'verified' && r.page_url && r.api_url ? { pageUrl: r.page_url, apiUrl: r.api_url } : null,
       checkedAt: r.checked_at.getTime(),
     }));
+  }
+
+  async findAlternatives(key: string): Promise<{ plan: AltPlan; createdAt: Date } | null> {
+    const { rows } = await this.pool.query<{ plan: AltPlan; created_at: Date }>('SELECT plan, created_at FROM alternatives WHERE key = $1', [key]);
+    return rows[0] ? { plan: rows[0].plan, createdAt: rows[0].created_at } : null;
+  }
+
+  async saveAlternatives(key: string, serviceId: string, plan: AltPlan): Promise<Date> {
+    const { rows } = await this.pool.query<{ created_at: Date }>(
+      `INSERT INTO alternatives (key, service_id, plan) VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (key) DO UPDATE SET plan = EXCLUDED.plan, created_at = now() RETURNING created_at`,
+      [key, serviceId, JSON.stringify(plan)],
+    );
+    return rows[0]!.created_at;
   }
 
   async saveStatusSource(row: { id: string; name: string; source: StatusSource | null }): Promise<void> {

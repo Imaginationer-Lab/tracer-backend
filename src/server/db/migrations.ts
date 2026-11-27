@@ -86,4 +86,16 @@ export const MIGRATIONS: { id: string; sql: string[] }[] = [
       )`,
     ],
   },
+  {
+    // 대체 서비스 AI 제안. 키에 파일 경로가 없어서 같은 코드를 쓰는 저장소끼리 같이 쓴다
+    id: '004_alternatives',
+    sql: [
+      `CREATE TABLE alternatives (
+        key        text        PRIMARY KEY,
+        service_id text        NOT NULL,
+        plan       jsonb       NOT NULL,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+    ],
+  },
 ];
