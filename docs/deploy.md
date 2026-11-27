@@ -89,5 +89,6 @@ DATABASE_URL=postgres://<user>:<password>@<host>:5432/postgres
 | `CLAUDE_MODEL` | `claude-opus-5-5` | 판정에 쓰는 모델. 바꾸면 분석 캐시 키가 바뀐다 |
 | `LLM_TIMEOUT_SECONDS` · `LLM_MAX_ITEMS` | 90 · 600 | 호출 한 번의 시간 상한, 분석 한 번에 묻는 새 후보 수 상한 (많이 쓰인 후보부터, 150개씩 나눠 물음) |
 | `STATUS_DISCOVERY_DAILY` | 100 | 서버 목록에 없는 서비스의 상태 페이지를 AI 웹 검색으로 찾는 하루 상한 (서비스마다 한 번, 못 찾으면 7일 뒤 다시) |
+| `ALTERNATIVES_MODEL` | claude-sonnet-5-5 | 대체 서비스 제안 모델. 판단 기준은 `skills/alternatives/` 스킬 문서 (고치면 저장된 제안을 다시 만든다) |
 | `CLUE_FIXTURE_FILE` | 없음 | 테스트용. 있으면 AI·DB 대신 이 파일의 고정 판정을 쓴다 (`docker-compose.test.yml`이 `test/fixtures/judgments.json`을 넣음) |
 | `DEMO_EVENT_FILE` | `data/demo-event.json` | 데모 재현 이벤트 |
