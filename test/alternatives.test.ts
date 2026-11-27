@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EvidenceItem } from '../src/api/contract.js';
-import { altKey, buildAltInput, parseAltPlan, presentAlternatives, rank, useGroups } from '../src/server/alternatives/alternatives.js';
+import { CATEGORIES } from '../src/engine/rules.js';
+import { altKey, buildAltInput, loadSkill, parseAltPlan, presentAlternatives, skillMessage, useGroups } from '../src/server/alternatives/alternatives.js';
 
 const ev = (path: string, line: number, label: string, code: string, endpoint: EvidenceItem['endpoint'] = null): EvidenceItem => ({
   path,
@@ -19,14 +20,27 @@ const stripe = [
 const service = { id: 'stripe', name: 'Stripe', category: 'payment' as const, role: '결제' };
 const repoServices = [{ id: 'toss-payments', name: 'Toss Payments', category: 'payment' as const }];
 
+describe('대체 서비스 스킬', () => {
+  it('SKILL.md와 분류마다 참고 문서가 있고, 그 분류 문서만 넣는다', () => {
+    const skill = loadSkill();
+    expect(skill.instructions.startsWith('# 대체 서비스 고르기')).toBe(true);
+    for (const c of CATEGORIES) expect(skill.references[c], c).toBeTruthy();
+    const msg = skillMessage(skill, buildAltInput({ id: 'aws-s3', name: 'Amazon S3', category: 'storage', role: '파일 업로드' }, useGroups(stripe), []));
+    expect(msg).toContain('S3 호환');
+    expect(msg).not.toContain('OpenAI 호환');
+  });
+});
+
 describe('대체 서비스', () => {
   it('AI 입력에는 파일 경로가 없어서, 같은 코드면 저장소가 달라도 키가 같다', () => {
     const a = buildAltInput(service, useGroups(stripe), repoServices);
     const moved = stripe.map((e) => ({ ...e, path: `app/${e.path}` }));
     expect(JSON.stringify(a)).not.toContain('src/payments');
-    expect(altKey(buildAltInput(service, useGroups(moved), repoServices), 'm')).toBe(altKey(a, 'm'));
+    expect(altKey(buildAltInput(service, useGroups(moved), repoServices), 'm', 's')).toBe(altKey(a, 'm', 's'));
     // 저장소에 있는 같은 분류 서비스가 다르면 다른 키 (in-repo가 달라진다)
-    expect(altKey(buildAltInput(service, useGroups(stripe), []), 'm')).not.toBe(altKey(a, 'm'));
+    expect(altKey(buildAltInput(service, useGroups(stripe), []), 'm', 's')).not.toBe(altKey(a, 'm', 's'));
+    // 스킬 문서가 바뀌면 다시 만든다
+    expect(altKey(a, 'm', 's2')).not.toBe(altKey(a, 'm', 's'));
   });
 
   it('같은 호출은 한 묶음, 파일은 모두 모은다', () => {
@@ -36,7 +50,7 @@ describe('대체 서비스', () => {
     expect(groups[0]!.files.map((f) => f.path)).toEqual(['src/payments/checkout.ts', 'src/payments/again.ts']);
   });
 
-  it('AI 답을 검사하고 고칠 양이 적은 순으로 세운다', () => {
+  it('AI 답은 안전 검사만 하고 순서는 그대로 둔다', () => {
     const groups = useGroups(stripe);
     const input = buildAltInput(service, groups, repoServices);
     const answer = JSON.stringify({
@@ -47,10 +61,9 @@ describe('대체 서비스', () => {
       ],
       alternatives: [
         { id: 'paddle', name: 'Paddle', category: 'payment', fit: 'drop-in', summary: '요청 형식이 다르다', coverage: [{ feature: 'checkout-session', support: 'yes' }, { feature: 'refund', support: 'partial', note: '부분 환불만' }], settings: ['STRIPE_SECRET_KEY', 'rm -rf /;'], editUses: [0, 1] },
-        // 저장소에 있으니 in-repo
-        { id: 'toss-payments', name: 'Toss Payments', category: 'payment', fit: 'rewrite', summary: '이미 연동됨', coverage: [{ feature: 'checkout-session', support: 'yes' }, { feature: 'refund', support: 'yes' }], settings: [], editUses: [0] },
-        // 쓰는 기능이 전부 안 되면 뺀다
-        { id: 'nopay', name: 'NoPay', category: 'payment', fit: 'rewrite', coverage: [{ feature: 'checkout-session', support: 'no' }] },
+        { id: 'toss-payments', name: 'Toss Payments', category: 'payment', fit: 'in-repo', summary: '이미 연동됨', coverage: [{ feature: 'checkout-session', support: 'yes' }, { feature: 'refund', support: 'yes' }], settings: [], editUses: [0] },
+        // 자기 자신, 형식이 틀린 id, 없는 분류는 뺀다
+
         { id: 'stripe', name: 'Stripe', category: 'payment', fit: 'drop-in', coverage: [{ feature: 'checkout-session', support: 'yes' }] },
         { id: 'Bad Id', name: 'x', category: 'payment', coverage: [] },
         { id: 'weird', name: 'x', category: 'banking', coverage: [{ feature: 'refund', support: 'yes' }] },
@@ -58,7 +71,6 @@ describe('대체 서비스', () => {
     });
     const plan = parseAltPlan(`좋아요 ${answer}`, input)!;
     expect(plan.features.map((f) => [f.key, f.uses])).toEqual([['checkout-session', [0]], ['refund', [1]]]);
-    // paddle은 저장소에 없는데 drop-in이라고 했으니 그대로 drop-in, toss는 in-repo
     expect(plan.alternatives.map((a) => [a.id, a.fit])).toEqual([['paddle', 'drop-in'], ['toss-payments', 'in-repo']]);
     expect(plan.alternatives[0]!.settings).toEqual(['STRIPE_SECRET_KEY']);
 
@@ -81,11 +93,6 @@ describe('대체 서비스', () => {
       input,
     )!;
     expect(plan.alternatives.map((a) => [a.id, a.fit])).toEqual([['imgix', 'rewrite'], ['aws-s3', 'rewrite']]);
-  });
-
-  it('안 되는 기능이 있으면 drop-in이어도 뒤로', () => {
-    const a = (fit: 'drop-in' | 'in-repo' | 'rewrite', supports: ('yes' | 'no')[], id: string) => ({ id, fit, editUses: [], coverage: supports.map((support, i) => ({ feature: `f${i}`, support, note: null })) });
-    expect(rank([a('drop-in', ['yes', 'no'], 'openrouter'), a('rewrite', ['yes', 'yes'], 'x'), a('in-repo', ['yes', 'yes'], 'azure-openai')]).map((x) => x.id)).toEqual(['azure-openai', 'x', 'openrouter']);
   });
 
   it('모양이 다르면 null', () => {
