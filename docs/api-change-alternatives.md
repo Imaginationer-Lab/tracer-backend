@@ -2,7 +2,7 @@
 
 장애가 난 서비스를 **가장 적게 고쳐서** 옮길 수 있는 대체 서비스를 알려 준다. 서비스 전체를 비교하지 않는다. 이 저장소가 그 서비스에서 **실제로 쓰는 기능**(호출·엔드포인트·설정 키)만 보고 고른다.
 
-> 구현 전에 먼저 넘기는 계약이다. 예시 JSON은 예상 값이고, 구현 후 실제 응답으로 바꿔 다시 올린다.
+> 2026-11-27 구현함. 아래 예시 JSON은 형식 예시이고, 실제 응답은 맨 끝 "실측"에 있다. AI 답이라 문구는 매번 조금씩 다를 수 있다 (같은 코드면 저장된 결과를 그대로 준다).
 
 ## 프론트에 부탁
 
@@ -89,7 +89,7 @@ export interface ProviderAlternatives {
 | IP 한도 초과 | 429 | `RATE_LIMITED` |
 | AI 응답 실패·시간 초과 | 503 | `ALTERNATIVES_UNAVAILABLE` (`retryable: true`) |
 
-## 예시 (예상): 예제 저장소의 Stripe
+## 형식 예시: 예제 저장소의 Stripe
 
 예제 저장소는 Stripe를 `src/payments/checkout.ts:2`에서 `api.stripe.com/v1/checkout/sessions`로 부르고, Toss Payments를 이미 `src/payments/toss.ts`에서 쓰고 있다.
 
@@ -154,3 +154,16 @@ Paddle          코드 수정 필요
   결제창 생성 ✓
   바꿀 설정: STRIPE_SECRET_KEY · 고칠 파일: src/payments/checkout.ts:2
 ```
+
+## 실측 (kangdora, 2026-11-27)
+
+처음 부를 때 4~10초, 저장된 뒤에는 수 ms.
+
+| 저장소 | 서비스 | 쓰는 기능 | 대체 (순서대로) |
+|---|---|---|---|
+| 예제 | Stripe | 결제 체크아웃 세션 생성 | Toss Payments(in-repo, partial, ● 상태 연동) · Paddle(rewrite) · Lemon Squeezy(rewrite) |
+| 예제 | Amazon S3 | 객체 업로드 | Cloudflare R2(drop-in, 설정 `S3_BUCKET`, 고칠 파일 없음) · Backblaze B2(drop-in) · DigitalOcean Spaces(drop-in) |
+| 예제 | Supabase | 이메일·비밀번호 로그인 | Firebase Auth · Auth0 · AWS Cognito (모두 rewrite) |
+| 예제 | Toss Payments | 결제 승인 | Stripe(in-repo, partial) · PortOne · NICEPAY (rewrite) |
+| OpenMAIC | OpenAI | 채팅·모델 목록·음성 인식·음성 합성·이미지 생성 | Azure OpenAI(in-repo) · Google Gemini(in-repo) · OpenRouter(drop-in이지만 음성 기능 no라 뒤로) |
+| OpenMAIC | GitHub | 저장소 스타 조회·이슈 자동화 | `[]` (대체할 것 없음) |
