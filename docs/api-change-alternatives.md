@@ -71,8 +71,8 @@ export interface ProviderAlternatives {
 | `in-repo` | 저장소에 이미 있음 | 이 저장소가 이미 연동한 다른 서비스 | 예제 저장소의 Stripe → Toss Payments |
 | `rewrite` | 코드 수정 필요 | 기능은 있지만 호출 코드를 바꿔야 한다 | Stripe → Paddle |
 
-- 정렬: `fit` 순 → 지원 안 되는(`no`) 기능이 적은 순 → 고칠 파일이 적은 순.
-- 쓰는 기능 중 하나라도 `no`인 후보는 뒤로 간다. 전부 `no`면 넣지 않는다.
+- 정렬: 쓰는 기능이 전부 되는(`no`가 없는) 후보 먼저 → `fit` 순 → `no`가 적은 순 → 고칠 파일이 적은 순. `drop-in`이라도 쓰는 기능 중 안 되는 게 있으면 뒤로 간다.
+- 쓰는 기능이 전부 `no`면 넣지 않는다.
 - 같은 분류(결제 → 결제)만 고른다. `in-repo`는 서버가 이 분석 결과로 다시 맞춘다 (저장소에 없는데 in-repo라고 하면 rewrite로). 대체가 없는 서비스(예: GitHub API를 쓰는 GitHub 연동)는 `alternatives: []`.
 
 ## 캐시·제한
