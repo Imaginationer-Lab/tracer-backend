@@ -136,12 +136,19 @@ export function parseAltPlan(text: string, input: AltInput): AltPlan | null {
   return { features, alternatives: rank(alternatives).slice(0, MAX_ALTERNATIVES) };
 }
 
-/** fit 순 → 안 되는 기능이 적은 순 → 고칠 코드가 적은 순 */
-function rank(list: AltPlan['alternatives']): AltPlan['alternatives'] {
-  const no = (a: AltPlan['alternatives'][number]) => a.coverage.filter((c) => c.support === 'no').length;
+/** 쓰는 기능이 전부 되는 것 먼저 → fit 순 → 안 되는 기능이 적은 순 → 고칠 코드가 적은 순 */
+export function rank<T extends Pick<AltPlan['alternatives'][number], 'fit' | 'coverage' | 'editUses'>>(list: T[]): T[] {
+  const no = (a: T) => a.coverage.filter((c) => c.support === 'no').length;
   return list
     .map((a, i) => ({ a, i }))
-    .sort((x, y) => FITS.indexOf(x.a.fit) - FITS.indexOf(y.a.fit) || no(x.a) - no(y.a) || x.a.editUses.length - y.a.editUses.length || x.i - y.i)
+    .sort(
+      (x, y) =>
+        Number(no(x.a) > 0) - Number(no(y.a) > 0) ||
+        FITS.indexOf(x.a.fit) - FITS.indexOf(y.a.fit) ||
+        no(x.a) - no(y.a) ||
+        x.a.editUses.length - y.a.editUses.length ||
+        x.i - y.i,
+    )
     .map((x) => x.a);
 }
 
@@ -155,7 +162,8 @@ const filesOf = (groups: UseGroup[], uses: number[]) => {
 export function presentAlternatives(plan: AltPlan, groups: UseGroup[], support: (id: string) => 'live' | 'none'): { features: UsedFeature[]; alternatives: Alternative[] } {
   return {
     features: plan.features.map((f) => ({ key: f.key, label: f.label, files: filesOf(groups, f.uses) })),
-    alternatives: plan.alternatives.map(({ settings, editUses, ...a }) => ({
+    // 저장한 뒤 정렬 기준이 바뀌어도 응답은 지금 기준으로
+    alternatives: rank(plan.alternatives).map(({ settings, editUses, ...a }) => ({
       ...a,
       fitLabel: FIT_LABEL[a.fit],
       changes: { settings, files: filesOf(groups, editUses) },

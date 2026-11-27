@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EvidenceItem } from '../src/api/contract.js';
-import { altKey, buildAltInput, parseAltPlan, presentAlternatives, useGroups } from '../src/server/alternatives/alternatives.js';
+import { altKey, buildAltInput, parseAltPlan, presentAlternatives, rank, useGroups } from '../src/server/alternatives/alternatives.js';
 
 const ev = (path: string, line: number, label: string, code: string, endpoint: EvidenceItem['endpoint'] = null): EvidenceItem => ({
   path,
@@ -81,6 +81,11 @@ describe('대체 서비스', () => {
       input,
     )!;
     expect(plan.alternatives.map((a) => [a.id, a.fit])).toEqual([['imgix', 'rewrite'], ['aws-s3', 'rewrite']]);
+  });
+
+  it('안 되는 기능이 있으면 drop-in이어도 뒤로', () => {
+    const a = (fit: 'drop-in' | 'in-repo' | 'rewrite', supports: ('yes' | 'no')[], id: string) => ({ id, fit, editUses: [], coverage: supports.map((support, i) => ({ feature: `f${i}`, support, note: null })) });
+    expect(rank([a('drop-in', ['yes', 'no'], 'openrouter'), a('rewrite', ['yes', 'yes'], 'x'), a('in-repo', ['yes', 'yes'], 'azure-openai')]).map((x) => x.id)).toEqual(['azure-openai', 'x', 'openrouter']);
   });
 
   it('모양이 다르면 null', () => {
