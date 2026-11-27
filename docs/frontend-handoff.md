@@ -190,6 +190,12 @@ SDK 호출이면 `endpoint`가 `null`이다 (예제 저장소의 S3: `src/storag
 - 결과에 없는 공급자를 부르면 `404 PROVIDER_NOT_FOUND`가 온다.
 - `hosts[]`: 호스트별 응답 확인 (서버가 호스트 루트에 키 없이 GET, 호스트당 60초 캐시). 서비스당 최대 3개, 없으면 `[]`. `probe.label`(응답 있음·응답 이상·확인 불가)을 그대로 쓰고 `httpStatus`는 참고용이다. 공식 상태 배지와 섞지 않는다. 판정 표는 `docs/api.md`.
 
+### 3-3b. `GET /analyses/:id/providers/:providerId/alternatives` 대체 서비스
+
+- **화면에 "AI 제안"이라고 표시해 주세요.** 응답에는 따로 표시 필드가 없다 (항상 AI 제안).
+- 처음은 5~15초 걸린다. 버튼을 눌렀을 때만 부르고 로딩을 보여 준다. 같은 코드면 다음부터 바로 온다.
+- 타입·정렬·예시: `docs/api-change-alternatives.md`. 실패하면 503 `ALTERNATIVES_UNAVAILABLE`(다시 시도).
+
 ### 3-4. `GET /providers/:providerId/status` 공급자 공개 상태
 
 `statusSupport === "live"`인 서비스만 부른다. 서버가 60초 캐시한다.
@@ -235,7 +241,7 @@ export type ErrorCode =
   | 'GITHUB_RATE_LIMITED' | 'GITHUB_UNAVAILABLE' | 'RATE_LIMITED'
   | 'ANALYSIS_NOT_FOUND' | 'ANALYSIS_NOT_READY' | 'PROVIDER_NOT_FOUND'
   | 'STATUS_NOT_SUPPORTED' | 'STATUS_UNAVAILABLE' | 'DEMO_EVENT_INVALID'
-  | 'ORIGIN_NOT_ALLOWED' | 'BAD_REQUEST' | 'NOT_FOUND' | 'DETECTION_UNAVAILABLE' | 'INTERNAL_ERROR';
+  | 'ORIGIN_NOT_ALLOWED' | 'BAD_REQUEST' | 'NOT_FOUND' | 'DETECTION_UNAVAILABLE' | 'ALTERNATIVES_UNAVAILABLE' | 'INTERNAL_ERROR';
 
 export interface ApiError {
   code: ErrorCode;
@@ -347,6 +353,7 @@ export interface DemoEvent { providerId: ProviderId; title: string; httpStatus: 
 | `DEMO_EVENT_INVALID` | 500 | 재현 데이터 이상 | "데모 이벤트를 불러오지 못했어요" + 재현 끄기 |
 | `ORIGIN_NOT_ALLOWED` | 403 | 9000이 아닌 출처 | 개발 설정 문제 (프론트 포트 확인) |
 | `DETECTION_UNAVAILABLE` | 503 | 외부 서비스를 판정하지 못함 (AI 장애). 분석이 `failed`로 끝날 때 `analysis.error`에 온다 | "외부 서비스를 판단하지 못했어요. 잠시 후 다시 시도해 주세요." + 다시 시도 |
+| `ALTERNATIVES_UNAVAILABLE` | 503 | 대체 서비스를 만들지 못함 (AI 장애) | "대체 서비스를 찾지 못했어요. 잠시 후 다시 시도해 주세요." + 다시 시도 |
 | `INTERNAL_ERROR` | 500 | 서버 오류 | 일반 오류 + 다시 시도 |
 
 - `error.retryable`이 `true`일 때만 "다시 시도" 버튼을 보인다.

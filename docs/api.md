@@ -181,6 +181,16 @@ SCR-002 진입 ── GET /api/providers/:id/status  (statusSupport가 live인 �
 - 주소 안전장치는 상태 페이지 검증과 같다 (https·443만, IP 주소·내부 도메인 거부, DNS가 공개 주소로만 풀려야 함).
 - 응답이 없으면 외부 기준 주소를 하나 더 불러서, 그것도 안 되면 `unknown`으로 둔다.
 
+### `GET /api/analyses/:id/providers/:providerId/alternatives`
+
+대체 서비스 (AI 제안, 서버가 검증하지 않음). 이 저장소가 그 서비스에서 실제로 쓰는 기능만 보고, 고칠 양이 적은 순으로 최대 3개를 준다. 타입·예시는 `docs/api-change-alternatives.md`.
+
+- `fit`: `drop-in`(주소·키만 바꾸면 됨) → `in-repo`(저장소에 이미 있음) → `rewrite`(코드 수정 필요) 순.
+- `in-repo`는 서버가 이 분석 결과로 다시 맞춘다 (결과에 있는 같은 분류 서비스만).
+- 결과는 DB에 저장한다. 키는 서비스 + 쓰는 호출과 그 코드(파일 경로 제외) + 저장소의 같은 분류 서비스라, 같은 코드를 쓰는 저장소끼리 같이 쓴다. 파일 위치는 응답할 때 이 저장소 것으로 붙인다.
+- 새로 만들 때만 IP 토큰을 1 쓰고, 실패하면 돌려준다. 처음은 5~15초.
+- 실패하면 503 `ALTERNATIVES_UNAVAILABLE` (다시 시도 가능).
+
 ### `GET /api/providers/:providerId/status`
 
 FEAT-003. 서버가 서비스의 공개 상태 API(Statuspage 형식 `/api/v2/status.json`)를 대신 불러서 60초 캐시한다 (브라우저 CORS 회피).
@@ -229,6 +239,7 @@ FEAT-004. 서버에 들어 있는 재현 데이터 한 건을 검증해서 돌�
 | `ANALYSIS_NOT_READY` | 409 | 아직 분석 중 (상세를 너무 일찍 부름) | 있음 |
 | `PROVIDER_NOT_FOUND` | 404 | 이 분석 결과에 없는 서비스 id | - |
 | `DETECTION_UNAVAILABLE` | 503 | 외부 서비스를 판단하지 못함 (AI 키 없음, AI 호출 실패) | "외부 서비스를 판단하지 못했어요" + 다시 시도 |
+| `ALTERNATIVES_UNAVAILABLE` | 503 | 대체 서비스를 만들지 못함 (AI 호출 실패) | "대체 서비스를 찾지 못했어요" + 다시 시도 |
 | `STATUS_NOT_SUPPORTED` | 404 | 실시간 연동 전 (`statusSupport: none`인 서비스) | - |
 | `STATUS_UNAVAILABLE` | 502 | 상태 확인 불가 · 다시 조회 | 있음 |
 | `DEMO_EVENT_INVALID` | 500 | 데모 이벤트를 불러오지 못했어요 | 재현 끄기 |
