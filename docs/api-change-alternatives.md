@@ -157,15 +157,16 @@ Paddle          코드 수정 필요
   바꿀 설정: STRIPE_SECRET_KEY · 고칠 파일: src/payments/checkout.ts:2
 ```
 
-## 실측 (kangdora, 2026-11-27)
+## 실측 (kangdora, 2026-11-27, 스킬 기반 · Sonnet 5.5 medium)
 
-처음 부를 때 4~10초, 저장된 뒤에는 수 ms.
+처음 부를 때 3~7초, 저장된 뒤에는 수 ms.
 
-| 저장소 | 서비스 | 쓰는 기능 | 대체 (순서대로) |
+| 저장소 | 서비스 | 쓰는 기능 | 대체 (AI가 정한 순서) |
 |---|---|---|---|
-| 예제 | Stripe | 결제 체크아웃 세션 생성 | Toss Payments(in-repo, partial, ● 상태 연동) · Paddle(rewrite) · Lemon Squeezy(rewrite) |
-| 예제 | Amazon S3 | 객체 업로드 | Cloudflare R2(drop-in, 설정 `S3_BUCKET`, 고칠 파일 없음) · Backblaze B2(drop-in) · DigitalOcean Spaces(drop-in) |
-| 예제 | Supabase | 이메일·비밀번호 로그인 | Firebase Auth · Auth0 · AWS Cognito (모두 rewrite) |
+| 예제 | Stripe | 결제창(체크아웃 세션) 생성 | Toss Payments(in-repo, partial, 설정 `TOSS_SECRET_KEY`·`TOSS_CLIENT_KEY`) · PortOne(rewrite) · Paddle(rewrite) |
+| 예제 | Amazon S3 | 파일 업로드 | Cloudflare R2(drop-in, 고칠 파일 없음) · Backblaze B2(drop-in) · DigitalOcean Spaces(drop-in) |
+| 예제 | Supabase | 이메일·비밀번호 로그인 | Firebase Authentication · Auth0 · Keycloak (모두 rewrite) |
 | 예제 | Toss Payments | 결제 승인 | Stripe(in-repo, partial) · PortOne · NICEPAY (rewrite) |
-| OpenMAIC | OpenAI | 채팅·모델 목록·음성 인식·음성 합성·이미지 생성 | Azure OpenAI(in-repo) · Google Gemini(in-repo) · OpenRouter(drop-in이지만 음성 기능 no라 뒤로) |
-| OpenMAIC | GitHub | 저장소 스타 조회·이슈 자동화 | `[]` (대체할 것 없음) |
+| OpenMAIC | OpenAI | 모델 목록·키 검사·채팅·음성 인식·음성 합성·이미지 생성 | Azure OpenAI(in-repo, 음성 인식까지 yes) · OpenRouter(in-repo, 음성 no라 뒤) |
+| OpenMAIC | DeepSeek | 채팅·TTS·OCR·웹 검색·잔액 조회 | OpenRouter(in-repo) · Alibaba DashScope(in-repo) |
+| OpenMAIC | GitHub | 저장소 정보·이슈 자동화 | `[]` (대체할 것 없음) |
