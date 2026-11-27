@@ -1,4 +1,5 @@
 // GET /analyses/:id/providers/:providerId/alternatives
+//   판단은 스킬 문서(skills/alternatives)를 읽은 AI가 하고, 답은 JSON 스키마로 받는다.
 //   저장된 결과(키: 서비스 + 쓰는 호출·코드 + 저장소의 같은 분류 서비스)가 있으면 바로, 없으면 AI에게 묻고 저장한다.
 //   새로 물을 때만 IP 토큰을 쓴다. 같은 키를 동시에 물으면 요청 하나를 같이 기다린다.
 
@@ -11,13 +12,14 @@ import { APP_CONFIG, type AppConfig } from '../config.js';
 import { AnalysisRepository } from '../db/analysis.repository.js';
 import { ApiException } from '../errors.js';
 import { StatusRegistry } from '../providers/status-registry.js';
-import { ALT_SYSTEM, altKey, buildAltInput, parseAltPlan, presentAlternatives, useGroups, type AltInput, type AltPlan } from './alternatives.js';
+import { ALT_SCHEMA, altKey, buildAltInput, loadSkill, parseAltPlan, presentAlternatives, skillMessage, useGroups, type AltInput, type AltPlan, type Skill } from './alternatives.js';
 
 @Injectable()
 export class AlternativesService {
   private readonly logger = new Logger('Alternatives');
   private readonly client: Anthropic | null;
   private readonly inflight = new Map<string, Promise<{ plan: AltPlan; createdAt: Date }>>();
+  private readonly skill: Skill = loadSkill();
 
   constructor(
     @Inject(APP_CONFIG) private readonly cfg: AppConfig,
@@ -45,7 +47,7 @@ export class AlternativesService {
       groups,
       record.result.providers.filter((p) => p.id !== providerId && p.category === summary.category).map((p) => ({ id: p.id, name: p.name, category: p.category })),
     );
-    const key = altKey(input, this.cfg.llm?.model ?? 'none');
+    const key = altKey(input, this.cfg.alternativesModel, this.skill.version);
     const saved = (await this.repo.findAlternatives(key)) ?? (await this.create(key, input, ip));
     this.status.discover(saved.plan.alternatives.map((a) => ({ id: a.id, name: a.name })));
     return {
@@ -80,13 +82,14 @@ export class AlternativesService {
 
   private async ask(input: AltInput): Promise<AltPlan> {
     const res = await this.client!.messages.create({
-      model: this.cfg.llm!.model,
+      model: this.cfg.alternativesModel,
       max_tokens: 8000,
-      system: ALT_SYSTEM,
-      messages: [{ role: 'user', content: JSON.stringify(input) }],
-      output_config: { effort: 'low' },
+      system: this.skill.instructions,
+      messages: [{ role: 'user', content: skillMessage(this.skill, input) }],
+      // 서비스 지식과 기능 대조가 필요해서 medium. 답은 스키마로 받는다
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: ALT_SCHEMA as unknown as Record<string, unknown> } },
     });
-    if (res.stop_reason === 'refusal') throw new Error('model refused');
+    if (res.stop_reason === 'refusal' || res.stop_reason === 'max_tokens') throw new Error(`stop: ${res.stop_reason}`);
     const plan = parseAltPlan(res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join(''), input);
     if (!plan) throw new Error('응답 모양이 다름');
     return plan;

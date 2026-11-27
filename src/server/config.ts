@@ -26,6 +26,8 @@ export interface AppConfig {
   clueFixtureFile: string | null;
   /** 서버 목록에 없는 서비스의 상태 페이지를 AI 웹 검색으로 찾는 하루 상한 */
   statusDiscoveryDaily: number;
+  /** 대체 서비스 제안 모델 (스킬 문서를 읽고 판단, 답은 JSON 스키마) */
+  alternativesModel: string;
 }
 
 const DEFAULT_CORS_ORIGINS = ['http://localhost:9000', 'http://127.0.0.1:9000'];
@@ -80,5 +82,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       : null,
     clueFixtureFile: env.CLUE_FIXTURE_FILE || null,
     statusDiscoveryDaily: int(env, 'STATUS_DISCOVERY_DAILY', 100, 0),
+    alternativesModel: env.ALTERNATIVES_MODEL || 'claude-sonnet-5-5',
   };
 }
