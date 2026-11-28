@@ -8,6 +8,7 @@
 
 - **화면에 "AI 제안"이라고 표시해 주세요.** 대체 서비스와 기능 지원 여부는 AI가 정리한 것이고 서버가 직접 검증하지 않는다. 응답에는 따로 표시 필드를 두지 않는다 (항상 AI 제안).
 - `alternatives`가 `[]`면 "대체할 서비스가 없어요"로 보여 주세요 (오류 아님, 200). `features`는 그대로 오니 쓰는 기능은 함께 보여 줄 수 있다. AI 호출 실패는 503 `ALTERNATIVES_UNAVAILABLE`로 따로 온다.
+- `summary`·`note`는 해요체로 온다 (예: "승인만 PaymentIntent 확정으로 바꾸면 돼요"). 화면 문구와 맞췄다.
 - 처음 부를 때는 몇 초(5~15초) 걸린다. 버튼을 눌렀을 때만 부르고 로딩을 보여 주세요. 같은 서비스·같은 기능이면 그다음부터는 바로 온다.
 
 ## 프론트가 바꿀 것
@@ -109,7 +110,7 @@ export interface ProviderAlternatives {
       "category": "payment",
       "fit": "in-repo",
       "fitLabel": "저장소에 이미 있음",
-      "summary": "이미 src/payments/toss.ts에서 결제 승인을 쓰고 있어 결제창 생성만 옮기면 된다",
+      "summary": "이미 결제 승인에 쓰고 있어서 결제창 생성만 옮기면 돼요",
       "coverage": [ { "feature": "checkout-session", "support": "yes", "note": "결제위젯 또는 결제창 SDK" } ],
       "changes": { "settings": [], "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ] },
       "statusSupport": "live"
@@ -120,7 +121,7 @@ export interface ProviderAlternatives {
       "category": "payment",
       "fit": "rewrite",
       "fitLabel": "코드 수정 필요",
-      "summary": "Checkout 기능이 있지만 요청 형식이 달라 호출 코드를 바꿔야 한다",
+      "summary": "Checkout 기능은 있지만 요청 형식이 달라서 호출 코드를 바꿔야 해요",
       "coverage": [ { "feature": "checkout-session", "support": "yes", "note": null } ],
       "changes": { "settings": ["STRIPE_SECRET_KEY"], "files": [ { "path": "src/payments/checkout.ts", "line": 2 } ] },
       "statusSupport": "none"
