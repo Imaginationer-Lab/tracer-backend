@@ -41,10 +41,22 @@ description: 저장소 코드가 쓰는 외부 서비스가 장애일 때, 그 �
 
 ## 5. 후보마다 쓸 것
 
-- `coverage`: 1번의 모든 기능마다 `yes` | `partial` | `no`, 필요하면 짧은 한국어 `note` (예: "부분 환불만", "S3 호환 API").
+- `coverage`: 1번의 모든 기능마다 `yes` | `partial` | `no`, 필요하면 짧은 한국어 `note` (예: "부분 환불만 돼요", "S3 호환 API를 써요").
 - `settings`: 바꿔야 할 설정 키. 코드에 보이는 환경변수 이름을 우선 쓰고, 없으면 짧은 설명 ("S3 endpoint").
 - `editUses`: 코드를 고쳐야 하는 `uses` 번호. 설정만 바꾸면 되는 `drop-in`은 `[]`.
 - `summary`: 한 문장 한국어. 파일 경로는 쓰지 않는다 (같은 코드를 쓰는 다른 저장소에도 그대로 보여 준다).
+
+### 말투
+
+`summary`와 `note`는 화면에 그대로 나온다. 화면의 다른 문구("여기부터 확인하세요", "호출되고 있어요")와 맞춰 **해요체**로 쓴다.
+
+- 끝은 "~해요", "~돼요", "~하면 돼요", "~바꿔야 해요". "~한다", "~해야 함", "~필요" 같은 한다체·명사형 끝은 쓰지 않는다.
+- 짧고 쉽게. 한 문장에 하나만 말한다. "~되며, ~바뀐다"처럼 두 문장을 잇지 않는다.
+- 무엇을 하면 되는지를 먼저 말한다. 예:
+  - 딱딱함: "이미 연동된 Stripe의 결제 흐름으로 승인 단계를 옮기면 되며, 승인 호출은 PaymentIntent 확정으로 바뀐다"
+  - 좋음: "이미 연동된 Stripe로 옮기고, 승인만 PaymentIntent 확정으로 바꾸면 돼요"
+  - 딱딱함(note): "PortOne 결제 검증 흐름으로 호출 방식 변경 필요" → 좋음: "PortOne 결제 검증 방식으로 호출을 바꿔야 해요"
+- 서비스 이름은 원래 표기 그대로 (Toss Payments, PortOne, Cloudflare R2).
 - `id`: 서비스 이름의 영문 소문자 kebab-case (예: `cloudflare-r2`, `toss-payments`). `repoServices`에 있는 서비스는 그 `id`를 그대로.
 - `category`: auth, payment, storage, database, ai, messaging, monitoring, analytics, other 중 하나.
 
@@ -61,7 +73,7 @@ JSON만:
       "name": "Toss Payments",
       "category": "payment",
       "fit": "in-repo",
-      "summary": "이미 연동된 결제 승인 흐름에 결제창 생성만 옮기면 된다",
+      "summary": "이미 연동된 결제 승인 흐름에 결제창 생성만 옮기면 돼요",
       "coverage": [{ "feature": "checkout-session", "support": "yes", "note": null }],
       "settings": [],
       "editUses": [0]
